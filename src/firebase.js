@@ -29,7 +29,7 @@ export const isFirebaseConfigured = () => {
 };
 
 // Seed default initial data for mock / bootstrap mode
-const DEFAULT_PRODUCTS = [
+export const DEFAULT_PRODUCTS = [
   {
     id: "prod-pulsepm",
     name: "PulsePM",
@@ -83,7 +83,7 @@ const DEFAULT_PRODUCTS = [
   }
 ];
 
-const DEFAULT_JOBS = [
+export const DEFAULT_JOBS = [
   {
     id: "job-lead-frontend",
     title: "Lead Frontend Engineer",
@@ -202,13 +202,33 @@ if (!localStorage.getItem("synerbit_team")) {
 export async function getProducts() {
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
+
+      // Check deleted products collection to ensure deleted items are never revived
+      const deletedSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
+      const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
+
       const snapshot = await getDocs(collection(db, "products"));
-      if (!snapshot.empty) {
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      let remoteProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Auto-seed missing default products into Firestore if not deleted
+      let seededAny = false;
+      for (const defProd of DEFAULT_PRODUCTS) {
+        if (!deletedIds.has(defProd.id) && !remoteProducts.some(p => p.id === defProd.id)) {
+          remoteProducts.push(defProd);
+          try {
+            await setDoc(doc(db, "products", defProd.id), defProd, { merge: true });
+            seededAny = true;
+          } catch (_) {}
+        }
+      }
+
+      if (remoteProducts.length > 0) {
+        setLocal("products", remoteProducts);
+        return remoteProducts;
       }
     } catch (err) {
       console.warn("Live Firebase getProducts failed, using local fallback:", err);
@@ -223,14 +243,31 @@ export async function getProducts() {
 export async function getJobs() {
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs, query, where } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      const q = query(collection(db, "jobs"), where("status", "==", "Active"));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Check deleted jobs collection
+      const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
+      const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
+
+      const snapshot = await getDocs(collection(db, "jobs"));
+      let remoteJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Auto-seed missing default jobs into Firestore if not deleted
+      for (const defJob of DEFAULT_JOBS) {
+        if (!deletedIds.has(defJob.id) && !remoteJobs.some(j => j.id === defJob.id)) {
+          remoteJobs.push(defJob);
+          try {
+            await setDoc(doc(db, "jobs", defJob.id), defJob, { merge: true });
+          } catch (_) {}
+        }
+      }
+
+      if (remoteJobs.length > 0) {
+        setLocal("jobs", remoteJobs);
+        return remoteJobs.filter(j => j.status === "Active");
       }
     } catch (err) {
       console.warn("Live Firebase getJobs failed, using local fallback:", err);

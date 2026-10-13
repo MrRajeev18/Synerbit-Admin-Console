@@ -4,7 +4,7 @@
  * and CRUD operations for Products, Jobs, Applications, and Ideas.
  */
 
-import { firebaseConfig, isFirebaseConfigured } from './firebase.js';
+import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS } from './firebase.js';
 
 // Local storage helper
 const getLocal = (key, fallback = []) => {
@@ -401,8 +401,8 @@ function updateAllUIPanels() {
 
 async function loadAllData() {
   // Load local cache immediately to prevent blank flash
-  currentProducts = getLocal('products', []);
-  currentJobs = getLocal('jobs', []);
+  currentProducts = getLocal('products', DEFAULT_PRODUCTS);
+  currentJobs = getLocal('jobs', DEFAULT_JOBS);
   currentApplications = getLocal('applications', []);
   currentIdeas = getLocal('ideas', []);
   currentContacts = getLocal('contacts', []);
@@ -416,7 +416,7 @@ async function loadAllData() {
     if (statusText) statusText.textContent = 'Firestore: Syncing...';
 
     try {
-      const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
@@ -451,22 +451,50 @@ async function loadAllData() {
         console.warn("Application inbox sync issue:", err);
       }
 
-      // 2. Fetch Jobs (Career Positions)
+      // 2. Fetch Jobs (Career Positions) with auto-seeding
       try {
+        const deletedJobSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
+        const deletedJobIds = new Set(deletedJobSnap.docs ? deletedJobSnap.docs.map(d => d.id) : []);
+
         const jSnap = await getDocs(collection(db, "jobs"));
-        if (!jSnap.empty) {
-          currentJobs = jSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let fetchedJobs = jSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        for (const defJob of DEFAULT_JOBS) {
+          if (!deletedJobIds.has(defJob.id) && !fetchedJobs.some(j => j.id === defJob.id)) {
+            fetchedJobs.push(defJob);
+            try {
+              await setDoc(doc(db, "jobs", defJob.id), defJob, { merge: true });
+            } catch (_) {}
+          }
+        }
+
+        if (fetchedJobs.length > 0) {
+          currentJobs = fetchedJobs;
           setLocal('jobs', currentJobs);
         }
       } catch (err) {
         console.warn("Job positions sync issue:", err);
       }
 
-      // 3. Fetch Products
+      // 3. Fetch Products with auto-seeding
       try {
+        const deletedProdSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
+        const deletedProdIds = new Set(deletedProdSnap.docs ? deletedProdSnap.docs.map(d => d.id) : []);
+
         const pSnap = await getDocs(collection(db, "products"));
-        if (!pSnap.empty) {
-          currentProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let fetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        for (const defProd of DEFAULT_PRODUCTS) {
+          if (!deletedProdIds.has(defProd.id) && !fetchedProducts.some(p => p.id === defProd.id)) {
+            fetchedProducts.push(defProd);
+            try {
+              await setDoc(doc(db, "products", defProd.id), defProd, { merge: true });
+            } catch (_) {}
+          }
+        }
+
+        if (fetchedProducts.length > 0) {
+          currentProducts = fetchedProducts;
           setLocal('products', currentProducts);
         }
       } catch (err) {
@@ -736,11 +764,12 @@ window.deleteProduct = async (id) => {
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, doc, deleteDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
       await deleteDoc(doc(db, "products", id));
+      await setDoc(doc(db, "deleted_products", id), { id, deletedAt: new Date().toISOString() });
     } catch (err) {
       console.warn("Could not delete product from Firestore:", err);
     }
@@ -862,11 +891,12 @@ window.deleteJob = async (id) => {
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, doc, deleteDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
       await deleteDoc(doc(db, "jobs", id));
+      await setDoc(doc(db, "deleted_jobs", id), { id, deletedAt: new Date().toISOString() });
     } catch (err) {
       console.warn("Could not delete job from Firestore:", err);
     }
