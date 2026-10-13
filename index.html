@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Synerbit Ecosystem — Admin Control Console</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+    <!-- Favicon / App Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=3" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=3" />
+    <link rel="icon" type="image/png" href="/favicon.png?v=3" />
+    <link rel="icon" type="image/png" href="/logo.png?v=3" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=3" />
+    <link rel="shortcut icon" href="/favicon.ico?v=3" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=3" />
+
+    <link rel="stylesheet" href="/src/admin.css" />
+  </head>
+  <body class="admin-body">
+    <!-- AUTHENTICATION SCREEN -->
+    <div id="auth-screen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-logo-header">
+          <img src="/logo.png" alt="Synerbit" class="auth-logo-img" />
+          <h1 class="auth-title">Synerbit Console</h1>
+          <p class="auth-subtitle">Ecosystem Management &amp; RBAC Control</p>
+        </div>
+
+        <div id="auth-error-msg" class="auth-error-banner" style="display: none;"></div>
+
+        <form id="admin-login-form">
+          <div class="form-group">
+            <label class="form-label">Admin Email</label>
+            <input type="email" id="login-email" class="form-input" required placeholder="name@synerbit.in" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="login-password" class="form-input" required placeholder="Enter your Firebase password" />
+          </div>
+
+          <button type="submit" class="btn-auth-primary" id="btn-login-submit">
+            Sign In to Console
+          </button>
+        </form>
+
+        <p class="auth-note">
+          Secured strictly with Firebase Authentication &amp; Granular RBAC.
+        </p>
+      </div>
+    </div>
+
+    <!-- MAIN ADMIN DASHBOARD LAYOUT -->
+    <div id="admin-app" class="admin-layout" style="display: none;">
+      <!-- SIDEBAR -->
+      <aside class="admin-sidebar">
+        <div class="sidebar-brand">
+          <img src="/logo.png" alt="Synerbit Logo" class="sidebar-logo" />
+          <div class="sidebar-brand-text">
+            <span class="brand-title">Synerbit</span>
+            <span class="brand-env">Admin Console</span>
+          </div>
+        </div>
+
+        <!-- Current User Profile Pill -->
+        <div class="sidebar-user-pill">
+          <div class="user-avatar" id="sidebar-user-avatar">R</div>
+          <div class="user-info-text">
+            <div class="user-name" id="sidebar-user-name">Rajeev Ranjan</div>
+            <div class="user-role-badge" id="sidebar-user-role">Super Admin</div>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs (Filtered dynamically by RBAC) -->
+        <nav class="sidebar-nav">
+          <div class="nav-section-title">CORE CONSOLE</div>
+
+          <button class="nav-tab active" data-tab="dashboard">
+            <span class="tab-icon">📊</span>
+            <span>Dashboard</span>
+          </button>
+
+          <button class="nav-tab" data-tab="products" id="tab-btn-products">
+            <span class="tab-icon">📦</span>
+            <span>Products</span>
+          </button>
+
+          <button class="nav-tab" data-tab="jobs" id="tab-btn-jobs">
+            <span class="tab-icon">💼</span>
+            <span>Job Openings</span>
+          </button>
+
+          <button class="nav-tab" data-tab="applications" id="tab-btn-applications">
+            <span class="tab-icon">📥</span>
+            <span>Applications</span>
+            <span class="nav-pill-badge" id="badge-applications-count">0</span>
+          </button>
+
+          <button class="nav-tab" data-tab="ideas" id="tab-btn-ideas">
+            <span class="tab-icon">💡</span>
+            <span>SaaS Ideas</span>
+            <span class="nav-pill-badge" id="badge-ideas-count">0</span>
+          </button>
+
+          <button class="nav-tab" data-tab="contacts" id="tab-btn-contacts">
+            <span class="tab-icon">✉️</span>
+            <span>Contact Messages</span>
+            <span class="nav-pill-badge" id="badge-contacts-count">0</span>
+          </button>
+
+          <div class="nav-section-title" id="section-admin-only">GOVERNANCE</div>
+
+          <button class="nav-tab" data-tab="team" id="tab-btn-team">
+            <span class="tab-icon">👥</span>
+            <span>Team &amp; Roles</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <a href="/" target="_blank" class="sidebar-link-btn">
+            <span>Visit Live Site</span>
+            <span>↗</span>
+          </a>
+          <button id="btn-admin-logout" class="sidebar-logout-btn" onclick="window.handleAdminSignOut && window.handleAdminSignOut()">
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT VIEW AREA -->
+      <main class="admin-main">
+        <!-- Top App Bar -->
+        <header class="admin-topbar">
+          <div>
+            <h2 class="view-title" id="current-view-title">Dashboard Overview</h2>
+            <p class="view-subtitle" id="current-view-desc">High-level ecosystem telemetry and active queues.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="btn-sync-firebase" class="btn-sync-action" title="Fetch latest data from Firebase Firestore">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Sync with Firebase</span>
+            </button>
+            <span class="system-status-indicator">
+              <span class="status-pulse-dot" id="firestore-status-dot"></span>
+              <span id="firestore-sync-status-text">Firestore: Active</span>
+            </span>
+          </div>
+        </header>
+
+        <!-- VIEW PANELS -->
+        <div class="admin-content-body">
+          
+          <!-- 1. DASHBOARD OVERVIEW -->
+          <section id="panel-dashboard" class="content-panel active">
+            <div class="kpi-grid">
+              <div class="kpi-card">
+                <div class="kpi-label">Active Products</div>
+                <div class="kpi-value" id="kpi-products-count">3</div>
+                <div class="kpi-hint">PulsePM, Habitpot, Busly</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Open Job Roles</div>
+                <div class="kpi-value" id="kpi-jobs-count">3</div>
+                <div class="kpi-hint">Engineering, Product, Design</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Received Applications</div>
+                <div class="kpi-value" id="kpi-apps-count">0</div>
+                <div class="kpi-hint">Candidate Submissions</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">SaaS Idea Pitches</div>
+                <div class="kpi-value" id="kpi-ideas-count">0</div>
+                <div class="kpi-hint">Founder Submissions</div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-label">Contact Messages</div>
+                <div class="kpi-value" id="kpi-contacts-count">0</div>
+                <div class="kpi-hint">Direct User Inquiries</div>
+              </div>
+            </div>
+
+            <!-- Quick Recent Activity -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+              <div class="data-card">
+                <div class="data-card-header">
+                  <h3 class="data-card-title">Recent Job Applications</h3>
+                  <button class="btn-text-action" onclick="document.querySelector('[data-tab=applications]').click()">View All →</button>
+                </div>
+                <div id="dashboard-recent-apps" class="recent-list-empty">
+                  No applications received yet.
+                </div>
+              </div>
+
+              <div class="data-card">
+                <div class="data-card-header">
+                  <h3 class="data-card-title">Recent SaaS Concept Submissions</h3>
+                  <button class="btn-text-action" onclick="document.querySelector('[data-tab=ideas]').click()">View All →</button>
+                </div>
+                <div id="dashboard-recent-ideas" class="recent-list-empty">
+                  No ideas submitted yet.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2. PRODUCTS MANAGEMENT -->
+          <section id="panel-products" class="content-panel">
+            <div class="panel-toolbar">
+              <button class="btn-primary-action" id="btn-open-create-product">
+                + Add New Product
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Product Name</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Links &amp; Apps</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="products-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 3. JOB OPENINGS MANAGEMENT -->
+          <section id="panel-jobs" class="content-panel">
+            <div class="panel-toolbar">
+              <button class="btn-primary-action" id="btn-open-create-job">
+                + Post New Role
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Role Title</th>
+                    <th>Department</th>
+                    <th>Location</th>
+                    <th>Experience</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 4. JOB APPLICATIONS INBOX -->
+          <section id="panel-applications" class="content-panel">
+            <div class="panel-toolbar">
+              <div class="filter-group">
+                <select id="filter-app-status" class="form-select-sm">
+                  <option value="all">All Statuses</option>
+                  <option value="New">New</option>
+                  <option value="Reviewing">Reviewing</option>
+                  <option value="Shortlisted">Shortlisted</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Applicant Name</th>
+                    <th>Applying For</th>
+                    <th>Email &amp; Phone</th>
+                    <th>Resume</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="applications-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 5. SAAS IDEA SUBMISSIONS INBOX -->
+          <section id="panel-ideas" class="content-panel">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Concept Name</th>
+                    <th>Founder / Proposer</th>
+                    <th>Stage</th>
+                    <th>Elevator Pitch</th>
+                    <th>Submitted</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="ideas-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 6. CONTACT MESSAGES -->
+          <section id="panel-contacts" class="content-panel">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <div>
+                <h3 style="color: #ffffff; font-size: 1.15rem; font-weight: 700; margin: 0;">Direct Inquiry Messages</h3>
+                <p style="color: #94a3b8; font-size: 0.82rem; margin: 4px 0 0 0;">Messages submitted via the site Contact button.</p>
+              </div>
+            </div>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Sender Name</th>
+                    <th>Email Address</th>
+                    <th>Subject</th>
+                    <th>Message</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="contacts-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 7. TEAM & ROLE PERMISSIONS (SUPER ADMIN) -->
+          <section id="panel-team" class="content-panel">
+            <div class="panel-toolbar">
+              <button class="btn-primary-action" id="btn-open-add-member">
+                + Add Team Member
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Module Permissions</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="team-table-body">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+
+    <!-- MODAL: ADD / EDIT PRODUCT -->
+    <div class="modal-backdrop" id="modal-product">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-product">&times;</button>
+        <h3 class="modal-header-title" id="product-modal-title">Add New Product</h3>
+        <form id="product-form">
+          <input type="hidden" id="prod-id" />
+          <div class="form-group">
+            <label class="form-label">Product Name *</label>
+            <input type="text" id="prod-name" class="form-input" required placeholder="e.g. Product Name" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tagline *</label>
+            <input type="text" id="prod-tagline" class="form-input" required placeholder="e.g. Short outcome-focused tagline" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category *</label>
+            <input type="text" id="prod-category" class="form-input" required placeholder="e.g. Productivity & Engineering" />
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label">Status *</label>
+              <select id="prod-status" class="form-select">
+                <option value="Live">Live</option>
+                <option value="Private Beta">Private Beta</option>
+                <option value="In Development">In Development</option>
+                <option value="Coming Soon">Coming Soon</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Color Theme *</label>
+              <select id="prod-color" class="form-select">
+                <option value="cyan">Cyan Glow</option>
+                <option value="emerald">Emerald Green</option>
+                <option value="amber">Amber Orange</option>
+              </select>
+            </div>
+          </div>
+          <!-- Platform 1: Website -->
+          <div style="display: grid; grid-template-columns: 140px 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Web Status</label>
+              <select id="prod-web-status" class="form-select">
+                <option value="Live">Live</option>
+                <option value="Beta">Beta</option>
+                <option value="In Development">In Development</option>
+                <option value="Coming Soon">Coming Soon</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Website URL</label>
+              <input type="url" id="prod-url" class="form-input" placeholder="https://" />
+            </div>
+          </div>
+
+          <!-- Platform 2: Android App -->
+          <div style="display: grid; grid-template-columns: 140px 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Android Status</label>
+              <select id="prod-android-status" class="form-select">
+                <option value="Live">Live</option>
+                <option value="Beta">Beta</option>
+                <option value="Coming Soon">Coming Soon</option>
+                <option value="In Development">In Development</option>
+                <option value="None">None</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Android App (Play Store)</label>
+              <input type="url" id="prod-android-url" class="form-input" placeholder="https://play.google.com/store/apps/details?id=..." />
+            </div>
+          </div>
+
+          <!-- Platform 3: iOS App -->
+          <div style="display: grid; grid-template-columns: 140px 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">iOS Status</label>
+              <select id="prod-ios-status" class="form-select">
+                <option value="Coming Soon">Coming Soon</option>
+                <option value="Live">Live</option>
+                <option value="Beta">Beta</option>
+                <option value="In Development">In Development</option>
+                <option value="None">None</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">iOS App (App Store)</label>
+              <input type="url" id="prod-ios-url" class="form-input" placeholder="https://apps.apple.com/app/..." />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description *</label>
+            <textarea id="prod-desc" class="form-textarea" rows="3" required placeholder="Detailed overview of what this platform accomplishes..."></textarea>
+          </div>
+          <button type="submit" class="btn-primary-action" style="width: 100%;">Save Product</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: ADD / EDIT JOB OPENING -->
+    <div class="modal-backdrop" id="modal-job">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-job">&times;</button>
+        <h3 class="modal-header-title" id="job-modal-title">Post New Career Position</h3>
+        <form id="job-form">
+          <input type="hidden" id="job-id-input" />
+          <div class="form-group">
+            <label class="form-label">Role Title *</label>
+            <input type="text" id="job-title-input" class="form-input" required placeholder="e.g. Lead Frontend Engineer" />
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label">Department *</label>
+              <input type="text" id="job-dept-input" class="form-input" required placeholder="e.g. Engineering" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Location *</label>
+              <input type="text" id="job-location-input" class="form-input" required placeholder="Bengaluru / Remote" />
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label">Employment Type *</label>
+              <select id="job-type-input" class="form-select">
+                <option value="Full-Time">Full-Time</option>
+                <option value="Contract">Contract</option>
+                <option value="Part-Time">Part-Time</option>
+                <option value="Internship">Internship</option>
+                <option value="Live Project">Live Project</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Experience Required *</label>
+              <input type="text" id="job-exp-input" class="form-input" required placeholder="e.g. 3+ Years" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status *</label>
+            <select id="job-status-input" class="form-select">
+              <option value="Active">Active (Accepting Applications)</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Job Description *</label>
+            <textarea id="job-desc-input" class="form-textarea" rows="3" required placeholder="Overview of the mission, day-to-day responsibilities..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Requirements (One per line) *</label>
+            <textarea id="job-reqs-input" class="form-textarea" rows="4" required placeholder="Expertise in modern JavaScript/TypeScript&#10;Experience with high-scale architecture&#10;Strong communication skills"></textarea>
+          </div>
+          <button type="submit" class="btn-primary-action" style="width: 100%;">Save Position</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: ADD / EDIT TEAM MEMBER & PERMISSIONS -->
+    <div class="modal-backdrop" id="modal-team">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-team">&times;</button>
+        <h3 class="modal-header-title" id="team-modal-title">Configure Team Member Access</h3>
+        <form id="team-form">
+          <input type="hidden" id="team-user-id" />
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" id="team-user-name" class="form-input" required placeholder="e.g. Priya Sharma" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Address *</label>
+            <input type="email" id="team-user-email" class="form-input" required placeholder="name@synerbit.in" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Role Title *</label>
+            <input type="text" id="team-user-role" class="form-input" required placeholder="e.g. Product Recruiter / Staff Lead" />
+          </div>
+
+          <div class="permissions-box">
+            <div class="perm-title">Granular Module Permissions:</div>
+            <p class="perm-desc">Toggle the checkboxes below to control which tabs and queues this user can see.</p>
+            
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-products" />
+              <label for="perm-products"><strong>Products Catalog</strong> (View &amp; Edit Product Listings)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-jobs" />
+              <label for="perm-jobs"><strong>Job Openings</strong> (Create &amp; Manage Open Career Roles)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-applications" />
+              <label for="perm-applications"><strong>Job Applications</strong> (View Candidates &amp; Resumes)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-ideas" />
+              <label for="perm-ideas"><strong>SaaS Idea Pitches</strong> (Review Confidential Concept Proposals)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-contacts" />
+              <label for="perm-contacts"><strong>Contact Inquiries</strong> (View Contact Form Submissions)</label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary-action" style="width: 100%; margin-top: 20px;">Save User Permissions</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: VIEW APPLICATION DETAILS -->
+    <div class="modal-backdrop" id="modal-view-app">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-view-app">&times;</button>
+        <h3 class="modal-header-title">Candidate Details</h3>
+        <div id="view-app-body" style="line-height: 1.6; color: #cbd5e1; font-size: 0.95rem;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: VIEW IDEA DETAILS -->
+    <div class="modal-backdrop" id="modal-view-idea">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-view-idea">&times;</button>
+        <h3 class="modal-header-title">SaaS Concept Overview</h3>
+        <div id="view-idea-body" style="line-height: 1.6; color: #cbd5e1; font-size: 0.95rem;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: VIEW CONTACT MESSAGE DETAILS -->
+    <div class="modal-backdrop" id="modal-view-contact">
+      <div class="modal-window">
+        <button class="modal-close-btn" data-close-modal="modal-view-contact">&times;</button>
+        <h3 class="modal-header-title">Contact Inquiry Details</h3>
+        <div id="view-contact-body" style="line-height: 1.6; color: #cbd5e1; font-size: 0.95rem;">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/admin.js"></script>
+  </body>
+</html>
