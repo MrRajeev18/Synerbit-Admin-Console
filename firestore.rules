@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if the caller is an authenticated admin/staff user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if caller is a Super Admin
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'rajeev@synerbit.in' ||
+        request.auth.token.email.lower() == 'admin@synerbit.in'
+      );
+    }
+
+    // 1. PRODUCTS:
+    // Public visitors can view published products.
+    // Only authenticated admins can add, update, or delete products.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    match /deleted_products/{productId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 2. JOBS (CAREERS):
+    // Public visitors can view open job postings.
+    // Only authenticated admins can create, edit, or delete jobs.
+    match /jobs/{jobId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    match /deleted_jobs/{jobId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 3. JOB APPLICATIONS:
+    // Anyone applying for a job can submit an application (create only).
+    // Only authenticated admins can view, review, change status, or delete applications.
+    match /job_applications/{applicationId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+    // Legacy applications collection (for backwards-compatibility)
+    match /applications/{applicationId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+    // Trash archive for deleted applications
+    match /deleted_applications/{applicationId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 4. SAAS IDEA SUBMISSIONS:
+    // Founders can submit idea pitches via the website (create only).
+    // Only authenticated admins can view, manage, or delete pitches.
+    match /idea_submissions/{ideaId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+    // Legacy ideas collection
+    match /ideas/{ideaId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+
+    // 5. CONTACT MESSAGES:
+    // Visitors can submit contact form inquiries (create only).
+    // Only authenticated admins can read and delete messages.
+    match /contact_messages/{messageId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+    // Legacy contacts collection
+    match /contacts/{messageId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+
+    // 6. TEAM MEMBERS (RBAC):
+    // Only authenticated admins can view and manage team member access.
+    match /team/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Fallback rule: deny all other collections by default for security
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
