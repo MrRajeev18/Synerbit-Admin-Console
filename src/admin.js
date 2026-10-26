@@ -24,23 +24,49 @@ const setLocal = (key, val) => {
   }
 };
 
-// Default Super Admin definition
-const DEFAULT_SUPER_ADMIN = {
-  id: 'admin-super',
-  name: 'Rajeev Ranjan',
-  email: 'rajeev@synerbit.in',
-  role: 'Super Admin',
-  isSuperAdmin: true,
-  permissions: {
-    products: true,
-    jobs: true,
-    applications: true,
-    ideas: true,
-    contacts: true,
-    team: true
-  },
-  createdAt: new Date("2026-01-01").toISOString()
+// Permanent Super Admin definitions (Fixed, Immutable, & Protected)
+const SUPER_ADMIN_EMAILS = ['rajeev@synerbit.in', 'admin@synerbit.in'];
+
+const isSuperAdminEmail = (email) => {
+  return SUPER_ADMIN_EMAILS.includes((email || '').toLowerCase().trim());
 };
+
+const PERMANENT_SUPER_ADMINS = [
+  {
+    id: 'admin-super-rajeev',
+    name: 'Rajeev Ranjan',
+    email: 'rajeev@synerbit.in',
+    role: 'Super Admin',
+    isSuperAdmin: true,
+    permissions: {
+      products: true,
+      jobs: true,
+      applications: true,
+      ideas: true,
+      contacts: true,
+      team: true
+    },
+    createdAt: new Date("2026-01-01").toISOString()
+  },
+  {
+    id: 'admin-super-synerbit',
+    name: 'Synerbit Administrator',
+    email: 'admin@synerbit.in',
+    role: 'Super Admin',
+    isSuperAdmin: true,
+    permissions: {
+      products: true,
+      jobs: true,
+      applications: true,
+      ideas: true,
+      contacts: true,
+      team: true
+    },
+    createdAt: new Date("2026-01-01").toISOString()
+  }
+];
+
+const DEFAULT_SUPER_ADMIN = PERMANENT_SUPER_ADMINS[0];
 
 // State
 let currentUser = null;
@@ -250,30 +276,32 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
         found = currentTeam.find(m => m.id === fbUser.uid);
       }
 
-      // 3. User must exist in Firebase backend to log in
-      if (!found) {
-        // Initial setup ONLY: If the team collection is completely empty, allow founder to seed first Super Admin
-        if (allTeamSnap.empty && normEmail === 'rajeev@synerbit.in' && isManualLogin && fbUser) {
-          const superAdmin = {
-            id: fbUser.uid || 'admin-super',
-            name: fbUser.displayName || 'Rajeev Ranjan',
-            email: normEmail,
-            role: 'Super Admin',
-            isSuperAdmin: true,
-            permissions: {
-              products: true,
-              jobs: true,
-              applications: true,
-              ideas: true,
-              contacts: true,
-              team: true
-            },
-            createdAt: new Date().toISOString()
-          };
-          await setDoc(doc(db, "team", superAdmin.id), superAdmin, { merge: true });
-          found = superAdmin;
-          currentTeam = [superAdmin];
-        }
+      // 3. Super Admins (rajeev@synerbit.in & admin@synerbit.in) are permanent and always guaranteed Super Admin access
+      if (isSuperAdminEmail(normEmail)) {
+        const adminPreset = PERMANENT_SUPER_ADMINS.find(a => a.email === normEmail);
+        const superAdminRecord = {
+          id: fbUser?.uid || found?.id || adminPreset?.id || `admin-${Date.now()}`,
+          name: fbUser?.displayName || found?.name || adminPreset?.name || (normEmail === 'rajeev@synerbit.in' ? 'Rajeev Ranjan' : 'Synerbit Administrator'),
+          email: normEmail,
+          role: 'Super Admin',
+          isSuperAdmin: true,
+          permissions: {
+            products: true,
+            jobs: true,
+            applications: true,
+            ideas: true,
+            contacts: true,
+            team: true
+          },
+          createdAt: found?.createdAt || adminPreset?.createdAt || new Date().toISOString()
+        };
+        try {
+          await setDoc(doc(db, "team", superAdminRecord.id), superAdminRecord, { merge: true });
+        } catch (_) {}
+        found = superAdminRecord;
+        const idx = currentTeam.findIndex(m => (m.email || '').toLowerCase().trim() === normEmail);
+        if (idx >= 0) currentTeam[idx] = superAdminRecord;
+        else currentTeam.unshift(superAdminRecord);
       }
     } catch (err) {
       console.warn("Could not query Firestore for user profile:", err);
@@ -282,8 +310,8 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
     // Offline emergency fallback only when Firebase is completely unconfigured
     let team = getLocal('team', []);
     found = team.find(m => (m.email || '').toLowerCase().trim() === normEmail);
-    if (!found && (normEmail === 'rajeev@synerbit.in' || normEmail.includes('admin'))) {
-      found = DEFAULT_SUPER_ADMIN;
+    if (!found && isSuperAdminEmail(normEmail)) {
+      found = PERMANENT_SUPER_ADMINS.find(a => a.email === normEmail) || DEFAULT_SUPER_ADMIN;
     }
   }
 
@@ -512,7 +540,20 @@ function setupRealtimeListeners(db) {
     // 6. Team Members Listener
     try {
       const unsubTeam = onSnapshot(collection(db, "team"), (snapshot) => {
-        const liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        let liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Ensure permanent Super Admins (rajeev@synerbit.in and admin@synerbit.in) are always present & locked
+        for (const adminDef of PERMANENT_SUPER_ADMINS) {
+          const foundAdmin = liveTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
+          if (!foundAdmin) {
+            liveTeam.unshift(adminDef);
+          } else {
+            foundAdmin.isSuperAdmin = true;
+            foundAdmin.role = 'Super Admin';
+            foundAdmin.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+          }
+        }
+
         currentTeam = liveTeam;
         try { localStorage.removeItem('synerbit_team'); } catch (_) {}
         renderTeamTable();
@@ -741,7 +782,27 @@ async function loadAllData() {
         } catch (_) {
           teamSnap = await getDocs(collection(db, "team"));
         }
-        currentTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let fetchedTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Ensure permanent Super Admins (rajeev@synerbit.in and admin@synerbit.in) are seeded & locked
+        for (const adminDef of PERMANENT_SUPER_ADMINS) {
+          const found = fetchedTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
+          if (!found) {
+            fetchedTeam.unshift(adminDef);
+            await setDoc(doc(db, "team", adminDef.id), adminDef, { merge: true }).catch(() => {});
+          } else {
+            found.isSuperAdmin = true;
+            found.role = 'Super Admin';
+            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+            await setDoc(doc(db, "team", found.id || adminDef.id), {
+              isSuperAdmin: true,
+              role: 'Super Admin',
+              permissions: { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true }
+            }, { merge: true }).catch(() => {});
+          }
+        }
+
+        currentTeam = fetchedTeam;
         try { localStorage.removeItem('synerbit_team'); } catch (_) {}
         renderTeamTable();
       } catch (err) {
@@ -1379,7 +1440,7 @@ function renderTeamTable() {
         <td>${permsList || '<span style="color: #64748b; font-style: italic;">No permissions</span>'}</td>
         <td style="color: #94a3b8; font-size: 0.82rem;">${formattedDate}</td>
         <td>
-          ${(member.email || '').toLowerCase().trim() === 'rajeev@synerbit.in' ? '<span style="color: #64748b; font-size: 0.78rem;">Protected Super Admin</span>' : `
+          ${(isSuperAdminEmail(member.email) || member.isSuperAdmin) ? '<span style="color: #64748b; font-size: 0.78rem; font-weight: 600;">Protected Super Admin</span>' : `
             <button class="btn-table-action" onclick="window.editMember('${member.id}')">Edit Permissions</button>
             <button class="btn-table-action delete" onclick="window.deleteMember('${member.id}')">Remove</button>
           `}
@@ -1417,6 +1478,13 @@ document.getElementById('team-form').addEventListener('submit', async (e) => {
   const email = document.getElementById('team-user-email').value.trim().toLowerCase();
   const role = document.getElementById('team-user-role').value.trim();
   const password = document.getElementById('team-user-password') ? document.getElementById('team-user-password').value : '';
+
+  // Prevent modifying or hijacking Super Admin accounts via the UI
+  if (isSuperAdminEmail(email)) {
+    alert('Super Admin accounts (rajeev@synerbit.in and admin@synerbit.in) are permanent and cannot be modified.');
+    closeModal('modal-team');
+    return;
+  }
 
   // Validate password for new user
   if (!idInput && (!password || password.length < 6)) {
@@ -1513,6 +1581,10 @@ document.getElementById('team-form').addEventListener('submit', async (e) => {
 window.editMember = (id) => {
   const m = currentTeam.find(x => x.id === id);
   if (!m) return;
+  if (isSuperAdminEmail(m.email) || m.isSuperAdmin) {
+    alert('Super Admin accounts (rajeev@synerbit.in and admin@synerbit.in) are permanent and cannot be modified.');
+    return;
+  }
   document.getElementById('team-user-id').value = m.id;
   document.getElementById('team-user-name').value = m.name;
   document.getElementById('team-user-email').value = m.email;
@@ -1543,8 +1615,12 @@ window.editMember = (id) => {
 };
 
 window.deleteMember = async (id) => {
-  if (!confirm('Are you sure you want to remove this team member?')) return;
   const targetMember = currentTeam.find(m => m.id === id);
+  if (targetMember && (isSuperAdminEmail(targetMember.email) || targetMember.isSuperAdmin)) {
+    alert('Super Admin accounts (rajeev@synerbit.in and admin@synerbit.in) are permanent and cannot be removed.');
+    return;
+  }
+  if (!confirm('Are you sure you want to remove this team member?')) return;
   currentTeam = currentTeam.filter(m => m.id !== id);
   try { localStorage.removeItem('synerbit_team'); } catch (_) {}
   renderTeamTable();
@@ -1588,7 +1664,7 @@ if (btnSyncTeam) {
     try {
       localStorage.removeItem('synerbit_team');
       if (isFirebaseConfigured()) {
-        const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { getFirestore, collection, getDocsFromServer, getDocs, setDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -1598,9 +1674,24 @@ if (btnSyncTeam) {
         } catch (_) {
           snap = await getDocs(collection(db, "team"));
         }
-        currentTeam = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let fetchedTeam = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Ensure permanent Super Admins are kept
+        for (const adminDef of PERMANENT_SUPER_ADMINS) {
+          const found = fetchedTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
+          if (!found) {
+            fetchedTeam.unshift(adminDef);
+            await setDoc(doc(db, "team", adminDef.id), adminDef, { merge: true }).catch(() => {});
+          } else {
+            found.isSuperAdmin = true;
+            found.role = 'Super Admin';
+            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+          }
+        }
+
+        currentTeam = fetchedTeam;
       } else {
-        currentTeam = [];
+        currentTeam = [...PERMANENT_SUPER_ADMINS];
       }
       renderTeamTable();
     } catch (err) {
