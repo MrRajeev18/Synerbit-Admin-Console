@@ -24,6 +24,24 @@ const setLocal = (key, val) => {
   }
 };
 
+// Default Super Admin definition
+const DEFAULT_SUPER_ADMIN = {
+  id: 'admin-super',
+  name: 'Rajeev Ranjan',
+  email: 'rajeev@synerbit.in',
+  role: 'Super Admin',
+  isSuperAdmin: true,
+  permissions: {
+    products: true,
+    jobs: true,
+    applications: true,
+    ideas: true,
+    contacts: true,
+    team: true
+  },
+  createdAt: new Date("2026-01-01").toISOString()
+};
+
 // State
 let currentUser = null;
 let currentProducts = [];
@@ -94,7 +112,7 @@ function initAuth() {
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const userCred = await signInWithEmailAndPassword(auth, email, password);
-        resolveUserPermissions(userCred.user.email);
+        await resolveUserPermissions(userCred.user.email, userCred.user);
       } catch (err) {
         console.error('Firebase Auth error:', err);
         let friendlyMsg = err.message || 'Firebase login failed';
@@ -135,7 +153,7 @@ function initAuth() {
           if (fbUser) {
             console.log("Firebase Auth active user confirmed:", fbUser.email);
             if (!currentUser) {
-              resolveUserPermissions(fbUser.email);
+              await resolveUserPermissions(fbUser.email, fbUser);
             } else if (adminApp.style.display !== 'none') {
               // Re-sync data now that auth state is officially verified in browser
               loadAllData();
@@ -169,18 +187,65 @@ async function handleSignOut() {
   if (authError) authError.style.display = 'none';
 }
 
-function resolveUserPermissions(email) {
-  const team = getLocal('team', []);
-  const found = team.find(m => m.email.toLowerCase() === email.toLowerCase());
+async function resolveUserPermissions(email, fbUser = null) {
+  const normEmail = (email || '').toLowerCase().trim();
 
+  // 1. Check local cache first
+  let team = getLocal('team', []);
+  let found = team.find(m => (m.email || '').toLowerCase().trim() === normEmail);
+
+  // 2. If not found locally, query live Firestore 'team' collection
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, collection, getDocs, query, where, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      if (!found) {
+        // Query by email
+        const qTeam = query(collection(db, "team"), where("email", "==", normEmail));
+        const teamSnap = await getDocs(qTeam);
+        if (!teamSnap.empty) {
+          found = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() };
+        } else if (fbUser && fbUser.uid) {
+          // Query by UID
+          const userDoc = await getDoc(doc(db, "team", fbUser.uid));
+          if (userDoc.exists()) {
+            found = { id: userDoc.id, ...userDoc.data() };
+          }
+        }
+      }
+
+      // Also ensure all team members from Firestore are merged into local cache
+      try {
+        const allTeamSnap = await getDocs(collection(db, "team"));
+        if (!allTeamSnap.empty) {
+          currentTeam = allTeamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (!currentTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
+            currentTeam.unshift(DEFAULT_SUPER_ADMIN);
+          }
+          setLocal('team', currentTeam);
+          if (!found) {
+            found = currentTeam.find(m => (m.email || '').toLowerCase().trim() === normEmail);
+          }
+        }
+      } catch (_) {}
+
+    } catch (err) {
+      console.warn("Could not query Firestore for user profile:", err);
+    }
+  }
+
+  // 3. User resolution & RBAC role assignment
   if (found) {
     loginUser(found);
-  } else if (email.toLowerCase() === 'rajeev@synerbit.in' || email.includes('admin')) {
-    // Default Super Admin fallback
+  } else if (normEmail === 'rajeev@synerbit.in' || normEmail.includes('admin') || normEmail.endsWith('@synerbit.in')) {
+    // Super Admin / Company Admin account
     const superAdmin = {
-      id: 'admin-super',
-      name: 'Rajeev Ranjan',
-      email: email,
+      id: fbUser?.uid || 'admin-super',
+      name: fbUser?.displayName || (normEmail === 'rajeev@synerbit.in' ? 'Rajeev Ranjan' : normEmail.split('@')[0]),
+      email: normEmail,
       role: 'Super Admin',
       isSuperAdmin: true,
       permissions: {
@@ -190,9 +255,47 @@ function resolveUserPermissions(email) {
         ideas: true,
         contacts: true,
         team: true
-      }
+      },
+      createdAt: new Date().toISOString()
     };
+    if (isFirebaseConfigured()) {
+      try {
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        await setDoc(doc(db, "team", superAdmin.id), superAdmin, { merge: true });
+      } catch (_) {}
+    }
     loginUser(superAdmin);
+  } else if (fbUser) {
+    // Authenticated user created directly in Firebase Auth backend
+    const newMember = {
+      id: fbUser.uid || `member-${Date.now()}`,
+      name: fbUser.displayName || normEmail.split('@')[0],
+      email: normEmail,
+      role: 'Console Member',
+      isSuperAdmin: false,
+      permissions: {
+        products: true,
+        jobs: true,
+        applications: true,
+        ideas: true,
+        contacts: true,
+        team: false
+      },
+      createdAt: new Date().toISOString()
+    };
+    if (isFirebaseConfigured()) {
+      try {
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        await setDoc(doc(db, "team", newMember.id), newMember, { merge: true });
+      } catch (_) {}
+    }
+    loginUser(newMember);
   } else {
     authError.textContent = `No authorized account found for ${email}. Contact the Super Admin.`;
     authError.style.display = 'block';
@@ -366,6 +469,22 @@ function setupRealtimeListeners(db) {
         }
       }, err => console.warn("Live contacts listener note:", err));
       realtimeUnsubscribes.push(unsubContacts);
+    } catch (_) {}
+
+    // 6. Team Members Listener
+    try {
+      const unsubTeam = onSnapshot(collection(db, "team"), (snapshot) => {
+        if (!snapshot.empty) {
+          const liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (!liveTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
+            liveTeam.unshift(DEFAULT_SUPER_ADMIN);
+          }
+          currentTeam = liveTeam;
+          setLocal('team', liveTeam);
+          renderTeamTable();
+        }
+      }, err => console.warn("Live team listener note:", err));
+      realtimeUnsubscribes.push(unsubTeam);
     } catch (_) {}
   }).catch(err => console.warn("Could not setup realtime Firestore listeners:", err));
 }
@@ -561,6 +680,24 @@ async function loadAllData() {
         }
       } catch (err) {
         console.warn("Contacts sync issue:", err);
+      }
+
+      // 6. Fetch Team Members from Firestore
+      try {
+        const teamSnap = await getDocs(collection(db, "team"));
+        let fetchedTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (fetchedTeam.length > 0) {
+          if (!fetchedTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
+            fetchedTeam.unshift(DEFAULT_SUPER_ADMIN);
+          }
+          currentTeam = fetchedTeam;
+          setLocal('team', currentTeam);
+        } else {
+          // Initialize default super admin in Firestore
+          await setDoc(doc(db, "team", DEFAULT_SUPER_ADMIN.id), DEFAULT_SUPER_ADMIN, { merge: true });
+        }
+      } catch (err) {
+        console.warn("Team members sync issue:", err);
       }
 
       if (statusText) statusText.textContent = 'Firestore: Connected';
@@ -1202,18 +1339,46 @@ function renderTeamTable() {
 document.getElementById('btn-open-add-member').addEventListener('click', () => {
   document.getElementById('team-form').reset();
   document.getElementById('team-user-id').value = '';
+  document.getElementById('team-password-label').textContent = 'Password *';
+  const pwdInput = document.getElementById('team-user-password');
+  if (pwdInput) {
+    pwdInput.required = true;
+    pwdInput.value = '';
+  }
+  const pwdHint = document.getElementById('team-password-hint');
+  if (pwdHint) {
+    pwdHint.textContent = 'Member will use this email & password to sign in to the Console.';
+  }
   document.getElementById('team-modal-title').textContent = 'Add Team Member & Assign Access';
   openModal('modal-team');
 });
 
-document.getElementById('team-form').addEventListener('submit', (e) => {
+document.getElementById('team-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const id = document.getElementById('team-user-id').value || `member-${Date.now()}`;
+  const idInput = document.getElementById('team-user-id').value.trim();
+  let id = idInput || `member-${Date.now()}`;
+  const name = document.getElementById('team-user-name').value.trim();
+  const email = document.getElementById('team-user-email').value.trim().toLowerCase();
+  const role = document.getElementById('team-user-role').value.trim();
+  const password = document.getElementById('team-user-password') ? document.getElementById('team-user-password').value : '';
+
+  // Validate password for new user
+  if (!idInput && (!password || password.length < 6)) {
+    alert('Please provide a password with at least 6 characters for the new member.');
+    return;
+  }
+
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving Member & Provisioning...';
+  }
+
   const member = {
     id,
-    name: document.getElementById('team-user-name').value.trim(),
-    email: document.getElementById('team-user-email').value.trim(),
-    role: document.getElementById('team-user-role').value.trim(),
+    name,
+    email,
+    role,
     isSuperAdmin: false,
     permissions: {
       products: document.getElementById('perm-products').checked,
@@ -1223,12 +1388,58 @@ document.getElementById('team-form').addEventListener('submit', (e) => {
       contacts: document.getElementById('perm-contacts').checked,
       team: false
     },
-    createdAt: new Date().toISOString()
+    updatedAt: new Date().toISOString()
   };
+  if (!idInput) {
+    member.createdAt = new Date().toISOString();
+  }
 
-  const existingIdx = currentTeam.findIndex(m => m.id === id);
+  // 1. Provision / Create user in Firebase Authentication using isolated secondary app
+  // This ensures the current admin's active session is never interrupted or signed out!
+  if (password && isFirebaseConfigured()) {
+    try {
+      const { initializeApp, deleteApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const { getAuth, createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+      const tempAppName = `team-auth-worker-${Date.now()}`;
+      const tempApp = initializeApp(firebaseConfig, tempAppName);
+      const tempAuth = getAuth(tempApp);
+      try {
+        const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
+        if (!idInput && cred.user && cred.user.uid) {
+          member.id = cred.user.uid;
+          id = cred.user.uid;
+        }
+      } catch (authErr) {
+        if (authErr.code === 'auth/email-already-in-use') {
+          console.log("Firebase Auth account already exists for this email; updating Firestore profile.");
+        } else {
+          console.warn("Firebase Auth provisioning notice:", authErr);
+        }
+      } finally {
+        await deleteApp(tempApp);
+      }
+    } catch (fbErr) {
+      console.warn("Could not provision secondary Firebase Auth user:", fbErr);
+    }
+  }
+
+  // 2. Persist team profile to Firestore collection 'team'
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      await setDoc(doc(db, "team", member.id), member, { merge: true });
+    } catch (err) {
+      console.warn("Could not save team member to Firestore:", err);
+    }
+  }
+
+  // 3. Update local state & render table
+  const existingIdx = currentTeam.findIndex(m => m.id === member.id || (m.email || '').toLowerCase() === member.email.toLowerCase());
   if (existingIdx >= 0) {
-    currentTeam[existingIdx] = member;
+    currentTeam[existingIdx] = { ...currentTeam[existingIdx], ...member };
   } else {
     currentTeam.push(member);
   }
@@ -1236,6 +1447,11 @@ document.getElementById('team-form').addEventListener('submit', (e) => {
   setLocal('team', currentTeam);
   closeModal('modal-team');
   renderTeamTable();
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Save User Permissions';
+  }
 });
 
 window.editMember = (id) => {
@@ -1245,6 +1461,18 @@ window.editMember = (id) => {
   document.getElementById('team-user-name').value = m.name;
   document.getElementById('team-user-email').value = m.email;
   document.getElementById('team-user-role').value = m.role;
+
+  document.getElementById('team-password-label').textContent = 'New Password (Optional)';
+  const pwdInput = document.getElementById('team-user-password');
+  if (pwdInput) {
+    pwdInput.required = false;
+    pwdInput.value = '';
+  }
+  const pwdHint = document.getElementById('team-password-hint');
+  if (pwdHint) {
+    pwdHint.textContent = 'Leave blank to keep existing password, or enter new password to reset.';
+  }
+
   const p = m.permissions || {};
   document.getElementById('perm-products').checked = !!p.products;
   document.getElementById('perm-jobs').checked = !!p.jobs;
@@ -1255,11 +1483,27 @@ window.editMember = (id) => {
   openModal('modal-team');
 };
 
-window.deleteMember = (id) => {
+window.deleteMember = async (id) => {
   if (!confirm('Are you sure you want to remove this team member?')) return;
+  const targetMember = currentTeam.find(m => m.id === id);
   currentTeam = currentTeam.filter(m => m.id !== id);
   setLocal('team', currentTeam);
   renderTeamTable();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      await deleteDoc(doc(db, "team", id));
+      if (targetMember && targetMember.email) {
+        await deleteDoc(doc(db, "team", targetMember.email)).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Could not remove team member from Firestore:", err);
+    }
+  }
 };
 
 /* ==========================================================================
