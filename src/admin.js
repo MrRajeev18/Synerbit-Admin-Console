@@ -114,8 +114,9 @@ function initAuth() {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
         const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
         if (!authorized) {
-          authError.textContent = `No authorized account found for ${email}. Contact the Super Admin.`;
+          authError.textContent = `Access Denied: Account (${email}) is not registered in the Firebase backend. Please contact the Super Admin.`;
           authError.style.display = 'block';
+          await handleSignOut();
         }
       } catch (err) {
         console.error('Firebase Auth error:', err);
@@ -244,30 +245,29 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
         found = currentTeam.find(m => m.id === fbUser.uid);
       }
 
-      // 3. If user is NOT found in Firestore team:
+      // 3. User must exist in Firebase backend to log in
       if (!found) {
-        // ONLY provision if this is an explicit manual login form submission (meaning valid password was entered)
-        if (isManualLogin && fbUser) {
-          const isOwner = normEmail === 'rajeev@synerbit.in';
-          const newMember = {
-            id: fbUser.uid || `member-${Date.now()}`,
-            name: fbUser.displayName || (isOwner ? 'Rajeev Ranjan' : normEmail.split('@')[0]),
+        // Initial setup ONLY: If the team collection is completely empty, allow founder to seed first Super Admin
+        if (allTeamSnap.empty && normEmail === 'rajeev@synerbit.in' && isManualLogin && fbUser) {
+          const superAdmin = {
+            id: fbUser.uid || 'admin-super',
+            name: fbUser.displayName || 'Rajeev Ranjan',
             email: normEmail,
-            role: isOwner ? 'Super Admin' : 'Console Member',
-            isSuperAdmin: isOwner,
+            role: 'Super Admin',
+            isSuperAdmin: true,
             permissions: {
               products: true,
               jobs: true,
               applications: true,
               ideas: true,
               contacts: true,
-              team: isOwner
+              team: true
             },
             createdAt: new Date().toISOString()
           };
-          await setDoc(doc(db, "team", newMember.id), newMember, { merge: true });
-          found = newMember;
-          currentTeam.push(newMember);
+          await setDoc(doc(db, "team", superAdmin.id), superAdmin, { merge: true });
+          found = superAdmin;
+          currentTeam = [superAdmin];
           setLocal('team', currentTeam);
         }
       }
@@ -313,24 +313,63 @@ function enterAdminApp() {
   loadAllData();
 }
 
+function hasPermission(moduleName) {
+  if (!currentUser) return false;
+  if (currentUser.isSuperAdmin === true) return true;
+  const p = currentUser.permissions || {};
+  return !!p[moduleName];
+}
+
 /**
- * Dynamically hide / show sidebar tabs based on the user's permissions
+ * Dynamically hide / show sidebar tabs and dashboard sections based on the user's permissions
  */
 function enforcePermissions() {
-  const p = currentUser.permissions || {};
-  const isSuper = currentUser.isSuperAdmin === true;
+  const isSuper = currentUser?.isSuperAdmin === true;
 
-  document.getElementById('tab-btn-products').style.display = (p.products || isSuper) ? 'flex' : 'none';
-  document.getElementById('tab-btn-jobs').style.display = (p.jobs || isSuper) ? 'flex' : 'none';
-  document.getElementById('tab-btn-applications').style.display = (p.applications || isSuper) ? 'flex' : 'none';
-  document.getElementById('tab-btn-ideas').style.display = (p.ideas || isSuper) ? 'flex' : 'none';
-  document.getElementById('tab-btn-contacts').style.display = (p.contacts || isSuper) ? 'flex' : 'none';
-  
-  // Team Management is strictly Super Admin
+  // Sidebar navigation tabs
+  const tabProducts = document.getElementById('tab-btn-products');
+  const tabJobs = document.getElementById('tab-btn-jobs');
+  const tabApps = document.getElementById('tab-btn-applications');
+  const tabIdeas = document.getElementById('tab-btn-ideas');
+  const tabContacts = document.getElementById('tab-btn-contacts');
   const teamSection = document.getElementById('section-admin-only');
-  const teamTab = document.getElementById('tab-btn-team');
-  teamSection.style.display = isSuper ? 'block' : 'none';
-  teamTab.style.display = isSuper ? 'flex' : 'none';
+  const tabTeam = document.getElementById('tab-btn-team');
+
+  if (tabProducts) tabProducts.style.display = hasPermission('products') ? 'flex' : 'none';
+  if (tabJobs) tabJobs.style.display = hasPermission('jobs') ? 'flex' : 'none';
+  if (tabApps) tabApps.style.display = hasPermission('applications') ? 'flex' : 'none';
+  if (tabIdeas) tabIdeas.style.display = hasPermission('ideas') ? 'flex' : 'none';
+  if (tabContacts) tabContacts.style.display = hasPermission('contacts') ? 'flex' : 'none';
+  if (tabTeam) tabTeam.style.display = (hasPermission('team') || isSuper) ? 'flex' : 'none';
+  if (teamSection) teamSection.style.display = (hasPermission('team') || isSuper) ? 'block' : 'none';
+
+  // Dashboard KPI cards
+  const kpiProducts = document.getElementById('kpi-card-products');
+  const kpiJobs = document.getElementById('kpi-card-jobs');
+  const kpiApps = document.getElementById('kpi-card-apps');
+  const kpiIdeas = document.getElementById('kpi-card-ideas');
+  const kpiContacts = document.getElementById('kpi-card-contacts');
+
+  if (kpiProducts) kpiProducts.style.display = hasPermission('products') ? 'block' : 'none';
+  if (kpiJobs) kpiJobs.style.display = hasPermission('jobs') ? 'block' : 'none';
+  if (kpiApps) kpiApps.style.display = hasPermission('applications') ? 'block' : 'none';
+  if (kpiIdeas) kpiIdeas.style.display = hasPermission('ideas') ? 'block' : 'none';
+  if (kpiContacts) kpiContacts.style.display = hasPermission('contacts') ? 'block' : 'none';
+
+  // Dashboard Recent Activity cards
+  const dashApps = document.getElementById('dash-card-apps');
+  const dashIdeas = document.getElementById('dash-card-ideas');
+  if (dashApps) dashApps.style.display = hasPermission('applications') ? 'block' : 'none';
+  if (dashIdeas) dashIdeas.style.display = hasPermission('ideas') ? 'block' : 'none';
+
+  // If the user lands on an unauthorized tab, redirect to dashboard or first permitted tab
+  const activePanel = document.querySelector('.content-panel.active');
+  if (activePanel) {
+    const currentTabId = activePanel.id.replace('panel-', '');
+    if (currentTabId !== 'dashboard' && !hasPermission(currentTabId)) {
+      switchTab('dashboard');
+    }
+  }
 }
 
 /* ==========================================================================
@@ -345,6 +384,12 @@ navTabs.forEach(tab => {
 });
 
 function switchTab(tabId) {
+  // Prevent navigating to unauthorized modules
+  if (tabId !== 'dashboard' && !hasPermission(tabId)) {
+    console.warn(`Access denied to module '${tabId}': User lacks required permission.`);
+    return;
+  }
+
   navTabs.forEach(t => t.classList.remove('active'));
   contentPanels.forEach(p => p.classList.remove('active'));
 
@@ -1295,7 +1340,7 @@ window.deleteContact = async (id) => {
 function renderTeamTable() {
   const tbody = document.getElementById('team-table-body');
   if (currentTeam.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #64748b;">No team members found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 28px;">No team members found in Firebase backend.</td></tr>';
     return;
   }
 
@@ -1307,17 +1352,22 @@ function renderTeamTable() {
       p.applications ? '<span class="badge cyan">Applications</span>' : '',
       p.ideas ? '<span class="badge amber">Ideas</span>' : '',
       p.contacts ? '<span class="badge emerald">Contacts</span>' : '',
-      member.isSuperAdmin ? '<span class="badge rose">Super Admin</span>' : ''
+      (p.team || member.isSuperAdmin) ? '<span class="badge rose">Team & Roles</span>' : ''
     ].filter(Boolean).join(' ');
+
+    const formattedDate = member.createdAt 
+      ? new Date(member.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : (member.updatedAt ? new Date(member.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Active');
 
     return `
       <tr>
-        <td><strong style="color: #ffffff;">${escapeHtml(member.name)}</strong></td>
-        <td>${escapeHtml(member.email)}</td>
-        <td>${escapeHtml(member.role)}</td>
-        <td>${permsList || '<span style="color: #64748b;">No permissions</span>'}</td>
+        <td><strong style="color: #ffffff;">${escapeHtml(member.name || 'Member')}</strong></td>
+        <td><code style="color: #38bdf8;">${escapeHtml(member.email || '')}</code></td>
+        <td><span class="badge ${member.isSuperAdmin ? 'rose' : 'emerald'}">${escapeHtml(member.role || 'Member')}</span></td>
+        <td>${permsList || '<span style="color: #64748b; font-style: italic;">No permissions</span>'}</td>
+        <td style="color: #94a3b8; font-size: 0.82rem;">${formattedDate}</td>
         <td>
-          ${member.isSuperAdmin ? '<span style="color: #64748b; font-size: 0.78rem;">Protected</span>' : `
+          ${member.isSuperAdmin ? '<span style="color: #64748b; font-size: 0.78rem;">Protected Super Admin</span>' : `
             <button class="btn-table-action" onclick="window.editMember('${member.id}')">Edit Permissions</button>
             <button class="btn-table-action delete" onclick="window.deleteMember('${member.id}')">Remove</button>
           `}
@@ -1339,6 +1389,9 @@ document.getElementById('btn-open-add-member').addEventListener('click', () => {
   const pwdHint = document.getElementById('team-password-hint');
   if (pwdHint) {
     pwdHint.textContent = 'Member will use this email & password to sign in to the Console.';
+  }
+  if (document.getElementById('perm-team')) {
+    document.getElementById('perm-team').checked = false;
   }
   document.getElementById('team-modal-title').textContent = 'Add Team Member & Assign Access';
   openModal('modal-team');
@@ -1377,7 +1430,7 @@ document.getElementById('team-form').addEventListener('submit', async (e) => {
       applications: document.getElementById('perm-applications').checked,
       ideas: document.getElementById('perm-ideas').checked,
       contacts: document.getElementById('perm-contacts').checked,
-      team: false
+      team: document.getElementById('perm-team') ? document.getElementById('perm-team').checked : false
     },
     updatedAt: new Date().toISOString()
   };
@@ -1470,6 +1523,9 @@ window.editMember = (id) => {
   document.getElementById('perm-applications').checked = !!p.applications;
   document.getElementById('perm-ideas').checked = !!p.ideas;
   document.getElementById('perm-contacts').checked = !!p.contacts;
+  if (document.getElementById('perm-team')) {
+    document.getElementById('perm-team').checked = !!(p.team || m.isSuperAdmin);
+  }
   document.getElementById('team-modal-title').textContent = 'Edit Member Permissions';
   openModal('modal-team');
 };

@@ -160,27 +160,27 @@
           <!-- 1. DASHBOARD OVERVIEW -->
           <section id="panel-dashboard" class="content-panel active">
             <div class="kpi-grid">
-              <div class="kpi-card">
+              <div class="kpi-card" id="kpi-card-products">
                 <div class="kpi-label">Active Products</div>
-                <div class="kpi-value" id="kpi-products-count">3</div>
+                <div class="kpi-value" id="kpi-products-count">0</div>
                 <div class="kpi-hint">PulsePM, Habitpot, Busly</div>
               </div>
-              <div class="kpi-card">
+              <div class="kpi-card" id="kpi-card-jobs">
                 <div class="kpi-label">Open Job Roles</div>
-                <div class="kpi-value" id="kpi-jobs-count">3</div>
+                <div class="kpi-value" id="kpi-jobs-count">0</div>
                 <div class="kpi-hint">Engineering, Product, Design</div>
               </div>
-              <div class="kpi-card">
+              <div class="kpi-card" id="kpi-card-apps">
                 <div class="kpi-label">Received Applications</div>
                 <div class="kpi-value" id="kpi-apps-count">0</div>
                 <div class="kpi-hint">Candidate Submissions</div>
               </div>
-              <div class="kpi-card">
+              <div class="kpi-card" id="kpi-card-ideas">
                 <div class="kpi-label">SaaS Idea Pitches</div>
                 <div class="kpi-value" id="kpi-ideas-count">0</div>
                 <div class="kpi-hint">Founder Submissions</div>
               </div>
-              <div class="kpi-card">
+              <div class="kpi-card" id="kpi-card-contacts">
                 <div class="kpi-label">Contact Messages</div>
                 <div class="kpi-value" id="kpi-contacts-count">0</div>
                 <div class="kpi-hint">Direct User Inquiries</div>
@@ -189,7 +189,7 @@
 
             <!-- Quick Recent Activity -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-              <div class="data-card">
+              <div class="data-card" id="dash-card-apps">
                 <div class="data-card-header">
                   <h3 class="data-card-title">Recent Job Applications</h3>
                   <button class="btn-text-action" onclick="document.querySelector('[data-tab=applications]').click()">View All →</button>
@@ -199,7 +199,7 @@
                 </div>
               </div>
 
-              <div class="data-card">
+              <div class="data-card" id="dash-card-ideas">
                 <div class="data-card-header">
                   <h3 class="data-card-title">Recent SaaS Concept Submissions</h3>
                   <button class="btn-text-action" onclick="document.querySelector('[data-tab=ideas]').click()">View All →</button>
@@ -358,10 +358,11 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>User</th>
-                    <th>Email</th>
-                    <th>Role</th>
+                    <th>Member Name</th>
+                    <th>Email Address</th>
+                    <th>Role Title</th>
                     <th>Module Permissions</th>
+                    <th>Date Added</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -580,6 +581,10 @@
             <div class="perm-checkbox-item">
               <input type="checkbox" id="perm-contacts" />
               <label for="perm-contacts"><strong>Contact Inquiries</strong> (View Contact Form Submissions)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-team" />
+              <label for="perm-team"><strong>Team &amp; Roles</strong> (Manage Console Users &amp; Permissions)</label>
             </div>
           </div>
 
