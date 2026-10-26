@@ -1306,7 +1306,7 @@ function renderApplicationsTable() {
     let statusCellHtml = '';
     if (currentAppView === 'active') {
       statusCellHtml = `
-        <select class="form-select-sm" onchange="window.updateAppStatus('${app.id}', this.value)">
+        <select class="form-select-sm app-status-select status-${status.toLowerCase()}" onchange="this.className='form-select-sm app-status-select status-' + this.value.toLowerCase(); window.updateAppStatus('${app.id}', this.value)">
           <option value="New" ${status === 'New' ? 'selected' : ''}>New</option>
           <option value="Reviewing" ${status === 'Reviewing' ? 'selected' : ''}>Reviewing</option>
           <option value="Shortlisted" ${status === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
