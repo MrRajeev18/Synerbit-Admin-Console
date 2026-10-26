@@ -229,15 +229,20 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, getDocsFromServer, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
 
-      // 1. Fetch live team members directly from Firestore
-      const allTeamSnap = await getDocs(collection(db, "team"));
+      // 1. Fetch live team members directly from Firestore server (bypassing browser cache)
+      let allTeamSnap;
+      try {
+        allTeamSnap = await getDocsFromServer(collection(db, "team"));
+      } catch (_) {
+        allTeamSnap = await getDocs(collection(db, "team"));
+      }
       currentTeam = allTeamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLocal('team', currentTeam);
+      try { localStorage.removeItem('synerbit_team'); } catch (_) {}
 
       // 2. Locate member by email or UID
       found = currentTeam.find(m => (m.email || '').toLowerCase().trim() === normEmail);
@@ -268,7 +273,6 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
           await setDoc(doc(db, "team", superAdmin.id), superAdmin, { merge: true });
           found = superAdmin;
           currentTeam = [superAdmin];
-          setLocal('team', currentTeam);
         }
       }
     } catch (err) {
@@ -510,7 +514,7 @@ function setupRealtimeListeners(db) {
       const unsubTeam = onSnapshot(collection(db, "team"), (snapshot) => {
         const liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         currentTeam = liveTeam;
-        setLocal('team', liveTeam);
+        try { localStorage.removeItem('synerbit_team'); } catch (_) {}
         renderTeamTable();
 
         // If the logged-in user was deleted from Firestore team in real time
@@ -570,7 +574,8 @@ async function loadAllData() {
   currentApplications = getLocal('applications', []);
   currentIdeas = getLocal('ideas', []);
   currentContacts = getLocal('contacts', []);
-  currentTeam = getLocal('team', []);
+  currentTeam = []; // Team members strictly loaded from Firestore server, never stale in localStorage
+  try { localStorage.removeItem('synerbit_team'); } catch (_) {}
 
   updateAllUIPanels();
 
@@ -727,11 +732,18 @@ async function loadAllData() {
         console.warn("Contacts sync issue:", err);
       }
 
-      // 6. Fetch Team Members from Firestore
+      // 6. Fetch Team Members from Firestore server directly
       try {
-        const teamSnap = await getDocs(collection(db, "team"));
+        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        let teamSnap;
+        try {
+          teamSnap = await getDocsFromServer(collection(db, "team"));
+        } catch (_) {
+          teamSnap = await getDocs(collection(db, "team"));
+        }
         currentTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setLocal('team', currentTeam);
+        try { localStorage.removeItem('synerbit_team'); } catch (_) {}
+        renderTeamTable();
       } catch (err) {
         console.warn("Team members sync issue:", err);
       }
@@ -1367,7 +1379,7 @@ function renderTeamTable() {
         <td>${permsList || '<span style="color: #64748b; font-style: italic;">No permissions</span>'}</td>
         <td style="color: #94a3b8; font-size: 0.82rem;">${formattedDate}</td>
         <td>
-          ${member.isSuperAdmin ? '<span style="color: #64748b; font-size: 0.78rem;">Protected Super Admin</span>' : `
+          ${(member.email || '').toLowerCase().trim() === 'rajeev@synerbit.in' ? '<span style="color: #64748b; font-size: 0.78rem;">Protected Super Admin</span>' : `
             <button class="btn-table-action" onclick="window.editMember('${member.id}')">Edit Permissions</button>
             <button class="btn-table-action delete" onclick="window.deleteMember('${member.id}')">Remove</button>
           `}
@@ -1534,24 +1546,71 @@ window.deleteMember = async (id) => {
   if (!confirm('Are you sure you want to remove this team member?')) return;
   const targetMember = currentTeam.find(m => m.id === id);
   currentTeam = currentTeam.filter(m => m.id !== id);
-  setLocal('team', currentTeam);
+  try { localStorage.removeItem('synerbit_team'); } catch (_) {}
   renderTeamTable();
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, doc, deleteDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      await deleteDoc(doc(db, "team", id));
+
+      // 1. Delete by document ID
+      await deleteDoc(doc(db, "team", id)).catch(() => {});
+
+      // 2. Delete by email document ID if applicable
       if (targetMember && targetMember.email) {
-        await deleteDoc(doc(db, "team", targetMember.email)).catch(() => {});
+        const normTargetEmail = targetMember.email.toLowerCase().trim();
+        await deleteDoc(doc(db, "team", normTargetEmail)).catch(() => {});
+
+        // 3. Query and delete all documents in 'team' matching this email
+        try {
+          const q = query(collection(db, "team"), where("email", "==", normTargetEmail));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, "team", d.id)).catch(() => {});
+          }
+        } catch (_) {}
       }
     } catch (err) {
       console.warn("Could not remove team member from Firestore:", err);
     }
   }
 };
+
+// Sync live backend button listener
+const btnSyncTeam = document.getElementById('btn-sync-cloud-team');
+if (btnSyncTeam) {
+  btnSyncTeam.addEventListener('click', async () => {
+    btnSyncTeam.disabled = true;
+    btnSyncTeam.textContent = 'Syncing...';
+    try {
+      localStorage.removeItem('synerbit_team');
+      if (isFirebaseConfigured()) {
+        const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let snap;
+        try {
+          snap = await getDocsFromServer(collection(db, "team"));
+        } catch (_) {
+          snap = await getDocs(collection(db, "team"));
+        }
+        currentTeam = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } else {
+        currentTeam = [];
+      }
+      renderTeamTable();
+    } catch (err) {
+      console.warn("Sync cloud team warning:", err);
+    } finally {
+      btnSyncTeam.disabled = false;
+      btnSyncTeam.textContent = '🔄 Sync Live Backend';
+    }
+  });
+}
 
 /* ==========================================================================
    MODAL UTILITIES
