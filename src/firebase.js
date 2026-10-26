@@ -1,13 +1,11 @@
 /**
  * Synerbit Firebase Backend Integration & Storage
  * 
- * Works with live Firebase project when credentials are provided in `firebaseConfig`.
- * Automatically provides a seamless, persistent local fallback (localStorage + Blob URLs)
- * for testing and preview before live credentials are bound.
+ * Connected directly to live Firebase Firestore.
+ * No localStorage business data caching — all data originates and syncs in realtime
+ * from the Firebase backend.
  */
 
-// Replace these values with your actual Firebase project settings from Firebase Console:
-// (Project Settings > General > Your apps > Web app)
 export const firebaseConfig = {
   apiKey: "AIzaSyDCoBbSW08D1oCTCyezMd8OOGPadcZDO6Y",
   authDomain: "synerbit-ecosystem.firebaseapp.com",
@@ -18,7 +16,6 @@ export const firebaseConfig = {
   measurementId: "G-BJGWMMQV91"
 };
 
-// Check if live Firebase is configured
 export const isFirebaseConfigured = () => {
   return (
     firebaseConfig.apiKey &&
@@ -28,7 +25,11 @@ export const isFirebaseConfigured = () => {
   );
 };
 
-// Seed default initial data for mock / bootstrap mode
+// Purge all legacy local storage business data caches
+['synerbit_applications', 'synerbit_deleted_applications', 'synerbit_ideas', 'synerbit_contacts', 'synerbit_products', 'synerbit_jobs', 'synerbit_team'].forEach(k => {
+  try { localStorage.removeItem(k); } catch (_) {}
+});
+
 export const DEFAULT_PRODUCTS = [
   {
     id: "prod-pulsepm",
@@ -102,178 +103,103 @@ export const DEFAULT_JOBS = [
     postedAt: new Date("2026-10-01").toISOString()
   },
   {
-    id: "job-fullstack-dev",
-    title: "Full-Stack SaaS Engineer",
-    department: "Product Engineering",
-    location: "Remote",
+    id: "job-senior-backend",
+    title: "Senior Backend Architect (Node.js & Cloud)",
+    department: "Engineering",
+    location: "Bengaluru / Hyderabad / Remote",
     type: "Full-Time",
-    experience: "2-4 Years",
+    experience: "4+ Years",
     description: "Join our core incubation team building multi-tenant SaaS platforms from zero to one. You will design resilient backend services, manage databases, and implement scalable APIs.",
     requirements: [
-      "Strong proficiency in Node.js, Python, or Go alongside modern frontend frameworks.",
+      "Extensive experience building scalable Node.js / Go backend services and microservices.",
       "Solid understanding of relational and NoSQL databases (PostgreSQL, MongoDB, Firestore).",
-      "Experience with authentication, cloud infrastructure (GCP/AWS), and containerization.",
-      "Self-directed problem solver excited about incubation speed."
+      "Hands-on expertise with AWS/GCP, Docker, Redis caching, and CI/CD pipelines.",
+      "Experience designing secure authentication (OAuth, JWT, SAML) and role-based permissions."
     ],
     status: "Active",
     postedAt: new Date("2026-10-05").toISOString()
   },
   {
     id: "job-product-designer",
-    title: "Senior Product Designer (UI/UX)",
+    title: "Founding Product Designer",
     department: "Design",
-    location: "Remote",
+    location: "Remote (India)",
     type: "Full-Time",
-    experience: "3+ Years",
+    experience: "2+ Years",
     description: "Shape the visual and interactive identity of new SaaS applications in Synerbit. You will drive UX research, rapid wireframing, high-fidelity prototypes, and component libraries.",
     requirements: [
-      "Outstanding portfolio demonstrating world-class SaaS application design.",
-      "Mastery of Figma, design tokens, responsive layouts, and modern design systems.",
-      "Ability to translate complex user workflows into clean, intuitive interfaces.",
-      "Strong collaboration skills partnering directly with founding engineers."
+      "Stunning portfolio showcasing end-to-end B2B/B2C SaaS design execution.",
+      "Expertise with Figma, design tokens, interactive component states, and motion prototypes.",
+      "Ability to translate complex technical workflows into clean, intuitive UI.",
+      "Understanding of HTML/CSS capabilities and design system handoff to engineers."
     ],
     status: "Active",
     postedAt: new Date("2026-10-08").toISOString()
   }
 ];
 
-// Helper to access LocalStorage collections
-const getLocal = (key, fallback) => {
-  try {
-    const data = localStorage.getItem(`synerbit_${key}`);
-    return data ? JSON.parse(data) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const setLocal = (key, data) => {
-  try {
-    localStorage.setItem(`synerbit_${key}`, JSON.stringify(data));
-  } catch (err) {
-    console.error(`Error saving ${key} to localStorage:`, err);
-  }
-};
-
-// Initialize default local store if empty
-if (!isFirebaseConfigured()) {
-  if (!localStorage.getItem("synerbit_products")) {
-    setLocal("products", DEFAULT_PRODUCTS);
-  }
-  if (!localStorage.getItem("synerbit_jobs")) {
-    setLocal("jobs", DEFAULT_JOBS);
-  }
-}
-if (!localStorage.getItem("synerbit_applications")) {
-  setLocal("applications", []);
-}
-if (!localStorage.getItem("synerbit_ideas")) {
-  setLocal("ideas", []);
-}
-if (!localStorage.getItem("synerbit_contacts")) {
-  setLocal("contacts", []);
-}
-if (!localStorage.getItem("synerbit_team")) {
-  setLocal("team", [
-    {
-      id: "admin-super",
-      email: "rajeev@synerbit.in",
-      name: "Rajeev Ranjan Kumar",
-      role: "Super Admin",
-      isSuperAdmin: true,
-      permissions: {
-        products: true,
-        jobs: true,
-        applications: true,
-        ideas: true,
-        contacts: true,
-        team: true
-      },
-      createdAt: new Date("2026-01-01").toISOString()
-    }
-  ]);
-}
-
 /* ==========================================================================
-   PUBLIC CLIENT API (Jobs, Ideas, Products, Contacts)
+   PUBLIC CLIENT API (Jobs, Ideas, Products, Contacts) - Firebase Direct
    ========================================================================== */
 
 /**
- * Fetch all active products directly from server without resurrecting deleted items
+ * Fetch all active products directly from Firebase server without resurrecting deleted items
  */
 export async function getProducts() {
-  if (isFirebaseConfigured()) {
+  try {
+    const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const deletedSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
+    const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
+
+    let snapshot;
     try {
-      const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-
-      // Check deleted products collection to ensure deleted items are never revived
-      const deletedSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
-      const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
-
-      let snapshot;
-      try {
-        snapshot = await getDocsFromServer(collection(db, "products"));
-      } catch (_) {
-        snapshot = await getDocs(collection(db, "products"));
-      }
-      let remoteProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      // Strictly exclude deleted products
-      remoteProducts = remoteProducts.filter(p => !deletedIds.has(p.id) && !p.isDeleted);
-
-      setLocal("products", remoteProducts);
-      return remoteProducts;
-    } catch (err) {
-      console.warn("Live Firebase getProducts failed, using local fallback:", err);
+      snapshot = await getDocsFromServer(collection(db, "products"));
+    } catch (_) {
+      snapshot = await getDocs(collection(db, "products"));
     }
+    const remoteProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    return remoteProducts.filter(p => !deletedIds.has(p.id) && !p.isDeleted);
+  } catch (err) {
+    console.warn("Live Firebase getProducts error:", err);
+    return [];
   }
-  return getLocal("products", []);
 }
 
 /**
- * Fetch all active job listings directly from server without resurrecting deleted jobs
+ * Fetch all active job listings directly from Firebase server without resurrecting deleted jobs
  */
 export async function getJobs() {
-  if (isFirebaseConfigured()) {
+  try {
+    const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
+    const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
+
+    let snapshot;
     try {
-      const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-
-      // Check deleted jobs collection
-      const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
-      const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
-
-      let snapshot;
-      try {
-        snapshot = await getDocsFromServer(collection(db, "jobs"));
-      } catch (_) {
-        snapshot = await getDocs(collection(db, "jobs"));
-      }
-      let remoteJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      // Strictly filter out deleted jobs
-      remoteJobs = remoteJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted);
-
-      setLocal("jobs", remoteJobs);
-      return remoteJobs.filter(j => j.status === "Active");
-    } catch (err) {
-      console.warn("Live Firebase getJobs failed, using local fallback:", err);
+      snapshot = await getDocsFromServer(collection(db, "jobs"));
+    } catch (_) {
+      snapshot = await getDocs(collection(db, "jobs"));
     }
+    const remoteJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    return remoteJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted && j.status === "Active");
+  } catch (err) {
+    console.warn("Live Firebase getJobs error:", err);
+    return [];
   }
-  const jobs = getLocal("jobs", []);
-  return jobs.filter(j => j.status === "Active");
 }
 
 /**
- * Subscribe to realtime active job updates
+ * Subscribe to realtime active job updates directly from Firebase
  */
 export function subscribeToJobs(callback) {
-  if (!isFirebaseConfigured()) return () => {};
   let unsub = () => {};
   import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js").then(({ getFirestore, collection, onSnapshot, getDocs }) => {
     import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then(async ({ initializeApp, getApps }) => {
@@ -286,7 +212,6 @@ export function subscribeToJobs(callback) {
       unsub = onSnapshot(collection(db, "jobs"), (snapshot) => {
         let liveJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         liveJobs = liveJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted && j.status === "Active");
-        setLocal("jobs", liveJobs);
         if (typeof callback === "function") callback(liveJobs);
       }, err => console.warn("Realtime jobs subscription note:", err));
     });
@@ -295,13 +220,12 @@ export function subscribeToJobs(callback) {
 }
 
 /**
- * Submit a Job Application
+ * Submit a Job Application directly to Firebase Firestore
  */
 export async function submitJobApplication(applicationData, resumeFile) {
   let resumeUrl = applicationData.resumeUrl || "";
 
-  // If a file was uploaded and live Firebase Storage is active
-  if (resumeFile && isFirebaseConfigured()) {
+  if (resumeFile) {
     try {
       const { getStorage, ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
@@ -311,125 +235,82 @@ export async function submitJobApplication(applicationData, resumeFile) {
       const uploadResult = await uploadBytes(storageRef, resumeFile);
       resumeUrl = await getDownloadURL(uploadResult.ref);
     } catch (err) {
-      console.warn("Storage upload failed, keeping client link:", err);
-      resumeUrl = URL.createObjectURL(resumeFile);
+      console.warn("Storage upload note:", err);
     }
-  } else if (resumeFile) {
-    resumeUrl = URL.createObjectURL(resumeFile);
   }
 
   const payload = {
-    ...applicationData,
     jobId: applicationData.jobId || "general",
     jobTitle: applicationData.jobTitle || "General Application",
     applicantName: applicationData.applicantName || applicationData.name || "Candidate",
+    name: applicationData.applicantName || applicationData.name || "Candidate",
     applicantEmail: applicationData.applicantEmail || applicationData.email || "",
+    email: applicationData.applicantEmail || applicationData.email || "",
     applicantPhone: applicationData.applicantPhone || applicationData.phone || "",
+    phone: applicationData.applicantPhone || applicationData.phone || "",
     portfolioUrl: applicationData.portfolioUrl || applicationData.link || "",
     notes: applicationData.notes || applicationData.note || "",
     resumeUrl: resumeUrl,
     resumeFileName: resumeFile ? resumeFile.name : (applicationData.resumeFileName || "No File"),
     status: applicationData.status || "New",
-    submittedAt: applicationData.submittedAt || new Date().toISOString()
+    submittedAt: new Date().toISOString()
   };
 
-  if (isFirebaseConfigured()) {
-    try {
-      const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      const docRef = await addDoc(collection(db, "job_applications"), payload);
-      
-      // Keep local store in sync immediately
-      const list = getLocal("applications", []);
-      const newEntry = { id: docRef.id, ...payload };
-      list.unshift(newEntry);
-      setLocal("applications", list);
-
-      return { success: true, id: docRef.id };
-    } catch (err) {
-      console.warn("Live Firebase addDoc failed, writing locally:", err);
-    }
-  }
-
-  // Local fallback
-  const list = getLocal("applications", []);
-  const newEntry = { id: `app-${Date.now()}`, ...payload };
-  list.unshift(newEntry);
-  setLocal("applications", list);
-  return { success: true, id: newEntry.id };
+  const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const docRef = await addDoc(collection(db, "job_applications"), payload);
+  return { success: true, id: docRef.id };
 }
 
 /**
- * Submit a SaaS Concept Idea
+ * Submit a SaaS Concept Idea directly to Firebase Firestore
  */
 export async function submitIdea(ideaData) {
   const payload = {
-    ...ideaData,
+    founderName: ideaData.founderName || "",
+    founderEmail: ideaData.founderEmail || "",
+    background: ideaData.background || "",
+    conceptName: ideaData.conceptName || ideaData.ideaName || "Untitled Concept",
+    productType: ideaData.productType || "",
+    problem: ideaData.problem || "",
+    solution: ideaData.solution || "",
+    targetAudience: ideaData.targetAudience || "",
+    stage: ideaData.stage || "Concept",
+    successReason: ideaData.successReason || "",
+    additionalContext: ideaData.additionalContext || "",
+    deckUrl: ideaData.deckUrl || "",
+    agreedToTerms: true,
     status: ideaData.status || "New",
-    submittedAt: ideaData.submittedAt || new Date().toISOString()
+    submittedAt: new Date().toISOString()
   };
 
-  if (isFirebaseConfigured()) {
-    try {
-      const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      const docRef = await addDoc(collection(db, "idea_submissions"), payload);
-
-      const list = getLocal("ideas", []);
-      const newEntry = { id: docRef.id, ...payload };
-      list.unshift(newEntry);
-      setLocal("ideas", list);
-
-      return { success: true, id: docRef.id };
-    } catch (err) {
-      console.warn("Live Firebase submitIdea failed, saving locally:", err);
-    }
-  }
-
-  // Local fallback
-  const list = getLocal("ideas", []);
-  const newEntry = { id: `idea-${Date.now()}`, ...payload };
-  list.unshift(newEntry);
-  setLocal("ideas", list);
-  return { success: true, id: newEntry.id };
+  const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const docRef = await addDoc(collection(db, "idea_submissions"), payload);
+  return { success: true, id: docRef.id };
 }
 
 /**
- * Submit Contact Form Message
+ * Submit Contact Form Message directly to Firebase Firestore
  */
 export async function submitContactMessage(contactData) {
   const payload = {
-    ...contactData,
-    status: contactData.status || "Unread",
-    submittedAt: contactData.submittedAt || new Date().toISOString()
+    name: contactData.name || "Anonymous",
+    email: contactData.email || "",
+    subject: contactData.subject || "General Inquiry",
+    message: contactData.message || "",
+    status: "Unread",
+    submittedAt: new Date().toISOString()
   };
 
-  if (isFirebaseConfigured()) {
-    try {
-      const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      const docRef = await addDoc(collection(db, "contact_messages"), payload);
-
-      const list = getLocal("contacts", []);
-      const newEntry = { id: docRef.id, ...payload };
-      list.unshift(newEntry);
-      setLocal("contacts", list);
-
-      return { success: true, id: docRef.id };
-    } catch (err) {
-      console.warn("Live Firebase submitContactMessage failed, saving locally:", err);
-    }
-  }
-
-  const list = getLocal("contacts", []);
-  const newEntry = { id: `contact-${Date.now()}`, ...payload };
-  list.unshift(newEntry);
-  setLocal("contacts", list);
-  return { success: true, id: newEntry.id };
+  const { getFirestore, collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const docRef = await addDoc(collection(db, "contact_messages"), payload);
+  return { success: true, id: docRef.id };
 }

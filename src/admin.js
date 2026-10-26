@@ -6,23 +6,14 @@
 
 import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS } from './firebase.js';
 
-// Local storage helper
-const getLocal = (key, fallback = []) => {
-  try {
-    const val = localStorage.getItem(`synerbit_${key}`);
-    return val ? JSON.parse(val) : fallback;
-  } catch {
-    return fallback;
-  }
-};
+// Local storage data caching disabled — all data strictly from live Firebase backend
+const getLocal = (_key, fallback = []) => fallback;
+const setLocal = () => {};
 
-const setLocal = (key, val) => {
-  try {
-    localStorage.setItem(`synerbit_${key}`, JSON.stringify(val));
-  } catch (err) {
-    console.error(`Error saving ${key}:`, err);
-  }
-};
+// Purge any legacy business data cached in localStorage
+['synerbit_applications', 'synerbit_deleted_applications', 'synerbit_ideas', 'synerbit_contacts', 'synerbit_products', 'synerbit_jobs', 'synerbit_team'].forEach(k => {
+  try { localStorage.removeItem(k); } catch (_) {}
+});
 
 // Permanent Super Admin definitions (Fixed, Immutable, & Protected)
 const SUPER_ADMIN_EMAILS = ['rajeev@synerbit.in', 'admin@synerbit.in'];
@@ -472,7 +463,6 @@ function setupRealtimeListeners(db) {
           return dateB - dateA;
         });
         currentApplications = liveApps;
-        setLocal('applications', liveApps);
         updateAllUIPanels();
       }, err => console.warn("Live applications listener note:", err));
       realtimeUnsubscribes.push(unsubApps);
@@ -488,26 +478,22 @@ function setupRealtimeListeners(db) {
           return dateB - dateA;
         });
         currentDeletedApplications = liveDeleted;
-        setLocal('deleted_applications', liveDeleted);
         updateAllUIPanels();
       }, err => console.warn("Live deleted_applications listener note:", err));
       realtimeUnsubscribes.push(unsubDelApps);
     } catch (_) {}
 
-    // 2. Ideas Listener
+    // 2. Ideas Listener (Realtime - updates on create, edit, or delete in Firebase)
     try {
       const unsubIdeas = onSnapshot(collection(db, "idea_submissions"), (snapshot) => {
-        if (!snapshot.empty) {
-          const liveIdeas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          liveIdeas.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          currentIdeas = liveIdeas;
-          setLocal('ideas', liveIdeas);
-          updateAllUIPanels();
-        }
+        const liveIdeas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        liveIdeas.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        currentIdeas = liveIdeas;
+        updateAllUIPanels();
       }, err => console.warn("Live ideas listener note:", err));
       realtimeUnsubscribes.push(unsubIdeas);
     } catch (_) {}
@@ -516,7 +502,6 @@ function setupRealtimeListeners(db) {
     try {
       const unsubJobs = onSnapshot(collection(db, "jobs"), (snapshot) => {
         currentJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.isDeleted);
-        setLocal('jobs', currentJobs);
         updateAllUIPanels();
       }, err => console.warn("Live jobs listener note:", err));
       realtimeUnsubscribes.push(unsubJobs);
@@ -526,26 +511,22 @@ function setupRealtimeListeners(db) {
     try {
       const unsubProds = onSnapshot(collection(db, "products"), (snapshot) => {
         currentProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => !p.isDeleted);
-        setLocal('products', currentProducts);
         updateAllUIPanels();
       }, err => console.warn("Live products listener note:", err));
       realtimeUnsubscribes.push(unsubProds);
     } catch (_) {}
 
-    // 5. Contact Messages Listener
+    // 5. Contact Messages Listener (Realtime - updates on create or delete in Firebase)
     try {
       const unsubContacts = onSnapshot(collection(db, "contact_messages"), (snapshot) => {
-        if (!snapshot.empty) {
-          const liveContacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          liveContacts.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          currentContacts = liveContacts;
-          setLocal('contacts', liveContacts);
-          updateAllUIPanels();
-        }
+        const liveContacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        liveContacts.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        currentContacts = liveContacts;
+        updateAllUIPanels();
       }, err => console.warn("Live contacts listener note:", err));
       realtimeUnsubscribes.push(unsubContacts);
     } catch (_) {}
@@ -629,15 +610,14 @@ function updateAllUIPanels() {
 }
 
 async function loadAllData() {
-  // Load local cache immediately to prevent blank flash
-  currentProducts = getLocal('products', DEFAULT_PRODUCTS);
-  currentJobs = getLocal('jobs', DEFAULT_JOBS);
-  currentApplications = getLocal('applications', []);
-  currentDeletedApplications = getLocal('deleted_applications', []);
-  currentIdeas = getLocal('ideas', []);
-  currentContacts = getLocal('contacts', []);
-  currentTeam = []; // Team members strictly loaded from Firestore server, never stale in localStorage
-  try { localStorage.removeItem('synerbit_team'); } catch (_) {}
+  // All business data loaded directly from live Firebase backend
+  currentProducts = [];
+  currentJobs = [];
+  currentApplications = [];
+  currentDeletedApplications = [];
+  currentIdeas = [];
+  currentContacts = [];
+  currentTeam = [];
 
   updateAllUIPanels();
 
@@ -647,7 +627,7 @@ async function loadAllData() {
     if (statusText) statusText.textContent = 'Firestore: Syncing...';
 
     try {
-      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, getDocsFromServer, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
@@ -656,42 +636,36 @@ async function loadAllData() {
       try {
         const appMap = new Map();
         try {
-          const snap1 = await getDocs(collection(db, "job_applications"));
+          const snap1 = await getDocsFromServer(collection(db, "job_applications"));
           snap1.forEach(d => appMap.set(d.id, { id: d.id, ...d.data() }));
-        } catch (e1) {
-          console.warn("Could not query 'job_applications':", e1);
+        } catch (_) {
+          const snap1 = await getDocs(collection(db, "job_applications")).catch(() => ({ forEach: () => {} }));
+          snap1.forEach(d => appMap.set(d.id, { id: d.id, ...d.data() }));
         }
 
         try {
-          const snap2 = await getDocs(collection(db, "applications"));
+          const snap2 = await getDocs(collection(db, "applications")).catch(() => ({ forEach: () => {} }));
           snap2.forEach(d => {
             if (!appMap.has(d.id)) appMap.set(d.id, { id: d.id, ...d.data() });
           });
         } catch (_) {}
 
-        if (appMap.size > 0) {
-          currentApplications = Array.from(appMap.values());
-          currentApplications.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          setLocal('applications', currentApplications);
-        } else {
-          currentApplications = [];
-          setLocal('applications', []);
-        }
+        currentApplications = Array.from(appMap.values());
+        currentApplications.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
 
         // Fetch Deleted Applications
         try {
-          const delSnap = await getDocs(collection(db, "deleted_applications"));
-          currentDeletedApplications = delSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const delSnap = await getDocsFromServer(collection(db, "deleted_applications")).catch(() => getDocs(collection(db, "deleted_applications")));
+          currentDeletedApplications = delSnap.docs ? delSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
           currentDeletedApplications.sort((a, b) => {
             const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
             const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
             return dateB - dateA;
           });
-          setLocal('deleted_applications', currentDeletedApplications);
         } catch (_) {}
       } catch (err) {
         console.warn("Application inbox sync issue:", err);
@@ -699,7 +673,6 @@ async function loadAllData() {
 
       // 2. Fetch Jobs (Career Positions)
       try {
-        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const deletedJobSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
         const deletedJobIds = new Set(deletedJobSnap.docs ? deletedJobSnap.docs.map(d => d.id) : []);
 
@@ -725,7 +698,6 @@ async function loadAllData() {
         }
 
         currentJobs = fetchedJobs;
-        setLocal('jobs', currentJobs);
         renderJobsTable();
       } catch (err) {
         console.warn("Job positions sync issue:", err);
@@ -733,7 +705,6 @@ async function loadAllData() {
 
       // 3. Fetch Products
       try {
-        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const deletedProdSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
         const deletedProdIds = new Set(deletedProdSnap.docs ? deletedProdSnap.docs.map(d => d.id) : []);
 
@@ -759,70 +730,57 @@ async function loadAllData() {
         }
 
         currentProducts = fetchedProducts;
-        setLocal('products', currentProducts);
         renderProductsTable();
       } catch (err) {
         console.warn("Products sync issue:", err);
       }
 
-      // 4. Fetch SaaS Ideas
+      // 4. Fetch SaaS Ideas directly from Firebase
       try {
         const ideaMap = new Map();
         try {
-          const iSnap1 = await getDocs(collection(db, "idea_submissions"));
+          const iSnap1 = await getDocsFromServer(collection(db, "idea_submissions")).catch(() => getDocs(collection(db, "idea_submissions")));
           iSnap1.forEach(d => ideaMap.set(d.id, { id: d.id, ...d.data() }));
         } catch (_) {}
 
         try {
-          const iSnap2 = await getDocs(collection(db, "ideas"));
+          const iSnap2 = await getDocs(collection(db, "ideas")).catch(() => ({ forEach: () => {} }));
           iSnap2.forEach(d => {
             if (!ideaMap.has(d.id)) ideaMap.set(d.id, { id: d.id, ...d.data() });
           });
         } catch (_) {}
 
-        if (ideaMap.size > 0) {
-          currentIdeas = Array.from(ideaMap.values());
-          currentIdeas.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          setLocal('ideas', currentIdeas);
-        }
+        currentIdeas = Array.from(ideaMap.values());
+        currentIdeas.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
       } catch (err) {
         console.warn("Ideas sync issue:", err);
       }
 
-      // 5. Fetch Contact Inquiries
+      // 5. Fetch Contact Inquiries directly from Firebase
       try {
         const contactMap = new Map();
         try {
-          const cSnap1 = await getDocs(collection(db, "contact_messages"));
+          const cSnap1 = await getDocsFromServer(collection(db, "contact_messages")).catch(() => getDocs(collection(db, "contact_messages")));
           cSnap1.forEach(d => contactMap.set(d.id, { id: d.id, ...d.data() }));
         } catch (_) {}
 
         try {
-          const cSnap2 = await getDocs(collection(db, "contacts"));
+          const cSnap2 = await getDocs(collection(db, "contacts")).catch(() => ({ forEach: () => {} }));
           cSnap2.forEach(d => {
             if (!contactMap.has(d.id)) contactMap.set(d.id, { id: d.id, ...d.data() });
           });
         } catch (_) {}
 
-        // Merge local cache so fresh local messages are never dropped
-        const localCachedContacts = getLocal('contacts', []);
-        localCachedContacts.forEach(c => {
-          if (!contactMap.has(c.id)) contactMap.set(c.id, c);
+        currentContacts = Array.from(contactMap.values());
+        currentContacts.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
         });
-
-        if (contactMap.size > 0) {
-          currentContacts = Array.from(contactMap.values());
-          currentContacts.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          setLocal('contacts', currentContacts);
-        }
       } catch (err) {
         console.warn("Contacts sync issue:", err);
       }
@@ -1369,7 +1327,7 @@ function renderApplicationsTable() {
       actionsCellHtml = `
         <div class="app-row-actions">
           <button class="btn-table-action" onclick="window.viewApplication('${app.id}')" title="View Full Details">View</button>
-          <button class="btn-table-action delete" onclick="window.moveToTrashApplication('${app.id}')" title="Move to Trash Archive">Trash</button>
+          <button class="btn-table-action delete" onclick="window.deleteApplicationPermanently('${app.id}')" title="Permanently Delete from Firebase">Delete</button>
         </div>
       `;
     } else {
@@ -1377,7 +1335,7 @@ function renderApplicationsTable() {
         <div class="app-row-actions">
           <button class="btn-table-action" onclick="window.viewApplication('${app.id}')" title="View Full Details">View</button>
           <button class="btn-table-action" style="color: #34d399; border-color: rgba(16,185,129,0.35);" onclick="window.restoreApplication('${app.id}')" title="Restore to Active Applications">Restore</button>
-          <button class="btn-table-action delete" onclick="window.permanentlyDeleteApplication('${app.id}')" title="Delete Permanently from Firestore">Purge</button>
+          <button class="btn-table-action delete" onclick="window.deleteApplicationPermanently('${app.id}')" title="Delete Permanently from Firestore">Purge</button>
         </div>
       `;
     }
@@ -1424,8 +1382,11 @@ function updateBulkActionBar() {
 
   if (currentAppView === 'active') {
     buttonsEl.innerHTML = `
-      <button type="button" class="btn-bulk-action delete" onclick="window.bulkMoveToTrash()">
+      <button type="button" class="btn-bulk-action delete" onclick="window.bulkPermanentlyDeleteActive()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        <span>Delete Selected (${selectedAppIds.size})</span>
+      </button>
+      <button type="button" class="btn-bulk-action" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);" onclick="window.bulkMoveToTrash()">
         <span>Move to Trash (${selectedAppIds.size})</span>
       </button>
       <button type="button" class="btn-bulk-action deselect" onclick="window.deselectAllApps()">Deselect All</button>
@@ -1701,14 +1662,15 @@ window.bulkRestoreApplications = async () => {
   }
 };
 
-// 5. Permanently Purge Single Application
-window.permanentlyDeleteApplication = async (id) => {
-  const app = currentDeletedApplications.find(a => a.id === id);
-  if (!confirm(`Are you sure you want to permanently delete the application from "${app?.applicantName || 'Candidate'}"? This action cannot be undone.`)) return;
+// 5. Permanently Delete Single Application (Active or Trash) directly from Firebase
+window.deleteApplicationPermanently = async (id) => {
+  const app = currentApplications.find(a => a.id === id) || currentDeletedApplications.find(a => a.id === id);
+  const applicantName = app?.applicantName || app?.name || 'Candidate';
+  if (!confirm(`Are you sure you want to permanently delete the application from "${applicantName}"? This will delete it completely from Firebase backend.`)) return;
 
+  currentApplications = currentApplications.filter(a => a.id !== id);
   currentDeletedApplications = currentDeletedApplications.filter(a => a.id !== id);
   selectedAppIds.delete(id);
-  setLocal('deleted_applications', currentDeletedApplications);
   updateAllUIPanels();
 
   if (isFirebaseConfigured()) {
@@ -1718,23 +1680,28 @@ window.permanentlyDeleteApplication = async (id) => {
       const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(fbApp);
 
-      await deleteDoc(doc(db, "deleted_applications", id));
+      await Promise.allSettled([
+        deleteDoc(doc(db, "job_applications", id)),
+        deleteDoc(doc(db, "applications", id)),
+        deleteDoc(doc(db, "deleted_applications", id))
+      ]);
     } catch (err) {
-      console.warn("Firestore purge application error:", err);
+      console.warn("Firestore delete application error:", err);
     }
   }
 };
+window.permanentlyDeleteApplication = window.deleteApplicationPermanently;
 
-// 6. Mass Permanently Purge Applications
-window.bulkPermanentlyDelete = async () => {
+// 6. Mass Permanently Delete Active Applications directly from Firebase
+window.bulkPermanentlyDeleteActive = async () => {
   if (selectedAppIds.size === 0) return;
   const count = selectedAppIds.size;
-  if (!confirm(`PERMANENT ACTION: Completely delete ${count} application${count > 1 ? 's' : ''} from the database? This cannot be recovered.`)) return;
+  if (!confirm(`PERMANENT ACTION: Completely delete ${count} selected application${count > 1 ? 's' : ''} from Firebase backend? This cannot be undone.`)) return;
 
   const idsToPurge = Array.from(selectedAppIds);
+  currentApplications = currentApplications.filter(a => !selectedAppIds.has(a.id));
   currentDeletedApplications = currentDeletedApplications.filter(a => !selectedAppIds.has(a.id));
   selectedAppIds.clear();
-  setLocal('deleted_applications', currentDeletedApplications);
   updateAllUIPanels();
 
   if (isFirebaseConfigured()) {
@@ -1745,13 +1712,20 @@ window.bulkPermanentlyDelete = async () => {
       const db = getFirestore(fbApp);
 
       for (const id of idsToPurge) {
-        await deleteDoc(doc(db, "deleted_applications", id)).catch(() => {});
+        await Promise.allSettled([
+          deleteDoc(doc(db, "job_applications", id)),
+          deleteDoc(doc(db, "applications", id)),
+          deleteDoc(doc(db, "deleted_applications", id))
+        ]);
       }
     } catch (err) {
-      console.warn("Firestore bulk purge error:", err);
+      console.warn("Firestore bulk purge active error:", err);
     }
   }
 };
+
+// 7. Mass Permanently Purge Trash Applications
+window.bulkPermanentlyDelete = window.bulkPermanentlyDeleteActive;
 
 window.updateAppStatus = async (id, newStatus) => {
   const app = currentApplications.find(a => a.id === id);
@@ -1800,11 +1774,10 @@ window.viewApplication = (id) => {
     <div style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-top: 6px; font-style: italic; color: #cbd5e1;">
       "${escapeHtml(note)}"
     </div>
-    ${resume ? `
-    <div style="margin-top: 20px;">
-      <a href="${escapeHtml(resume)}" target="_blank" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Download / Open Resume Document ↗</a>
+    <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Download / Open Resume Document ↗</a>` : ''}
+      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600;" onclick="window.deleteApplicationPermanently('${app.id}'); window.closeModal('modal-view-app');">Delete Application</button>
     </div>
-    ` : ''}
   `;
   openModal('modal-view-app');
 };
@@ -1830,8 +1803,9 @@ function renderIdeasTable() {
       <td><span class="badge amber">${idea.stage}</span></td>
       <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(idea.elevatorPitch || '')}</td>
       <td style="font-size: 0.8rem; color: #94a3b8;">${formatDateTime(idea.submittedAt || idea.createdAt)}</td>
-      <td>
+      <td style="white-space: nowrap;">
         <button class="btn-table-action" onclick="window.viewIdea('${idea.id}')">View Pitch</button>
+        <button class="btn-table-action delete" style="color: #f87171; margin-left: 4px;" onclick="window.deleteIdea('${idea.id}')" title="Permanently Delete Idea from Firebase">Delete</button>
       </td>
     </tr>
   `).join('');
@@ -1861,11 +1835,37 @@ window.viewIdea = (id) => {
     ${idea.additionalContext ? `<p style="margin-top: 10px;"><strong>Additional Context / Links:</strong><br />${escapeHtml(idea.additionalContext)}</p>` : ''}
     ${idea.deckUrl ? `<p style="margin-top: 14px;"><strong>Deck / Prototype:</strong> <a href="${idea.deckUrl}" target="_blank" style="color: #38bdf8;">${escapeHtml(idea.deckUrl)} ↗</a></p>` : ''}
     
-    <div style="margin-top: 24px;">
+    <div style="margin-top: 24px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap;">
+      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600;" onclick="window.deleteIdea('${idea.id}'); window.closeModal('modal-view-idea');">Delete Pitch</button>
       <a href="mailto:${idea.founderEmail}?subject=Re:%20Synerbit%20Incubation%20Proposal%20-%20${encodeURIComponent(idea.conceptName)}" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Reply to Founder via Email ✉️</a>
     </div>
   `;
   openModal('modal-view-idea');
+};
+
+// Permanently Delete SaaS Idea from Firebase
+window.deleteIdea = async (id) => {
+  const idea = currentIdeas.find(i => i.id === id);
+  if (!confirm(`Are you sure you want to permanently delete idea pitch "${idea?.conceptName || 'Pitch'}" from Firebase backend?`)) return;
+
+  currentIdeas = currentIdeas.filter(i => i.id !== id);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      await Promise.allSettled([
+        deleteDoc(doc(db, "idea_submissions", id)),
+        deleteDoc(doc(db, "ideas", id))
+      ]);
+    } catch (err) {
+      console.warn("Firestore delete idea error:", err);
+    }
+  }
 };
 
 /* ==========================================================================
@@ -2358,19 +2358,6 @@ function closeModal(modalId) {
 }
 window.closeModal = closeModal;
 
-// Cross-tab synchronization
-window.addEventListener('storage', (e) => {
-  if (e.key === 'synerbit_contacts') {
-    currentContacts = getLocal('contacts', []);
-    updateAllUIPanels();
-  } else if (e.key === 'synerbit_applications') {
-    currentApplications = getLocal('applications', []);
-    updateAllUIPanels();
-  } else if (e.key === 'synerbit_ideas') {
-    currentIdeas = getLocal('ideas', []);
-    updateAllUIPanels();
-  }
-});
 
 document.querySelectorAll('[data-close-modal]').forEach(btn => {
   btn.addEventListener('click', () => {
