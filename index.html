@@ -266,29 +266,83 @@
 
           <!-- 4. JOB APPLICATIONS INBOX -->
           <section id="panel-applications" class="content-panel">
-            <div class="panel-toolbar">
-              <div class="filter-group">
-                <select id="filter-app-status" class="form-select-sm">
-                  <option value="all">All Statuses</option>
-                  <option value="New">New</option>
-                  <option value="Reviewing">Reviewing</option>
-                  <option value="Shortlisted">Shortlisted</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
+            <!-- Applications View Switcher Tabs -->
+            <div class="app-view-tabs">
+              <button class="app-view-tab active" id="tab-app-active">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7z"></path><path d="M5.45 5.11L2 12v0h20v0L18.55 5.11A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.85 1.11z"></path></svg>
+                <span>Active Applications</span>
+                <span class="app-count-pill" id="badge-active-apps-count">0</span>
+              </button>
+              <button class="app-view-tab" id="tab-app-trash">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <span>Trash Archive</span>
+                <span class="app-count-pill trash" id="badge-trash-apps-count">0</span>
+              </button>
+            </div>
+
+            <!-- Toolbar & Dynamic Filters -->
+            <div class="panel-toolbar app-filter-toolbar">
+              <div class="app-search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="search-app-input" class="form-input-sm" placeholder="Search candidate, email, phone..." />
+              </div>
+
+              <div class="app-filter-selectors">
+                <!-- Role Filter -->
+                <div class="filter-field">
+                  <label class="filter-label" for="filter-app-role">Role:</label>
+                  <select id="filter-app-role" class="form-select-sm">
+                    <option value="all">All Roles</option>
+                  </select>
+                </div>
+
+                <!-- Status Filter -->
+                <div class="filter-field" id="status-filter-wrapper">
+                  <label class="filter-label" for="filter-app-status">Status:</label>
+                  <select id="filter-app-status" class="form-select-sm">
+                    <option value="all">All Statuses</option>
+                    <option value="New">New</option>
+                    <option value="Reviewing">Reviewing</option>
+                    <option value="Shortlisted">Shortlisted</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+
+                <!-- Reset Filters Button -->
+                <button type="button" class="btn-reset-filters" id="btn-reset-app-filters" title="Reset all filters">
+                  Clear
+                </button>
+              </div>
+
+              <div class="app-results-meta">
+                <span id="app-results-count">0 results</span>
+              </div>
+            </div>
+
+            <!-- Floating / Sticky Bulk Action Bar -->
+            <div class="bulk-action-bar" id="app-bulk-bar" style="display: none;">
+              <div class="bulk-action-left">
+                <span class="bulk-selected-count" id="bulk-selected-count">0 selected</span>
+              </div>
+              <div class="bulk-action-right" id="bulk-action-buttons">
+                <!-- Rendered dynamically depending on Active vs Trash view -->
               </div>
             </div>
 
             <div class="table-container">
               <table class="data-table">
                 <thead>
-                  <tr>
-                    <th>Applicant Name</th>
+                  <tr id="apps-table-header-row">
+                    <th style="width: 44px; text-align: center;">
+                      <input type="checkbox" id="app-select-all" class="table-checkbox" title="Select all" />
+                    </th>
+                    <th>Applicant</th>
                     <th>Applying For</th>
-                    <th>Email &amp; Phone</th>
+                    <th>Contact Info</th>
                     <th>Resume</th>
-                    <th>Submitted</th>
-                    <th>Status</th>
-                    <th>Action</th>
+                    <th id="th-app-date">Submitted</th>
+                    <th id="th-app-status">Status</th>
+                    <th style="text-align: right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="applications-table-body">

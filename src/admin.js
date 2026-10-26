@@ -73,6 +73,9 @@ let currentUser = null;
 let currentProducts = [];
 let currentJobs = [];
 let currentApplications = [];
+let currentDeletedApplications = [];
+let currentAppView = 'active'; // 'active' | 'trash'
+let selectedAppIds = new Set();
 let currentIdeas = [];
 let currentContacts = [];
 let currentTeam = [];
@@ -462,19 +465,33 @@ function setupRealtimeListeners(db) {
     // 1. Applications Listener
     try {
       const unsubApps = onSnapshot(collection(db, "job_applications"), (snapshot) => {
-        if (!snapshot.empty) {
-          const liveApps = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          liveApps.sort((a, b) => {
-            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          currentApplications = liveApps;
-          setLocal('applications', liveApps);
-          updateAllUIPanels();
-        }
+        const liveApps = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        liveApps.sort((a, b) => {
+          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        currentApplications = liveApps;
+        setLocal('applications', liveApps);
+        updateAllUIPanels();
       }, err => console.warn("Live applications listener note:", err));
       realtimeUnsubscribes.push(unsubApps);
+    } catch (_) {}
+
+    // 1b. Deleted Applications Listener (Trash Archive)
+    try {
+      const unsubDelApps = onSnapshot(collection(db, "deleted_applications"), (snapshot) => {
+        const liveDeleted = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        liveDeleted.sort((a, b) => {
+          const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
+          const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
+          return dateB - dateA;
+        });
+        currentDeletedApplications = liveDeleted;
+        setLocal('deleted_applications', liveDeleted);
+        updateAllUIPanels();
+      }, err => console.warn("Live deleted_applications listener note:", err));
+      realtimeUnsubscribes.push(unsubDelApps);
     } catch (_) {}
 
     // 2. Ideas Listener
@@ -599,6 +616,13 @@ function updateAllUIPanels() {
   if (badgeIdeas) badgeIdeas.textContent = currentIdeas.length;
   if (badgeContacts) badgeContacts.textContent = currentContacts.length;
 
+  const badgeActiveApps = document.getElementById('badge-active-apps-count');
+  const badgeTrashApps = document.getElementById('badge-trash-apps-count');
+  if (badgeActiveApps) badgeActiveApps.textContent = currentApplications.length;
+  if (badgeTrashApps) badgeTrashApps.textContent = currentDeletedApplications.length;
+
+  populateAppRoleFilter();
+
   renderDashboardActivity();
   renderProductsTable();
   renderJobsTable();
@@ -613,6 +637,7 @@ async function loadAllData() {
   currentProducts = getLocal('products', DEFAULT_PRODUCTS);
   currentJobs = getLocal('jobs', DEFAULT_JOBS);
   currentApplications = getLocal('applications', []);
+  currentDeletedApplications = getLocal('deleted_applications', []);
   currentIdeas = getLocal('ideas', []);
   currentContacts = getLocal('contacts', []);
   currentTeam = []; // Team members strictly loaded from Firestore server, never stale in localStorage
@@ -656,7 +681,22 @@ async function loadAllData() {
             return dateB - dateA;
           });
           setLocal('applications', currentApplications);
+        } else {
+          currentApplications = [];
+          setLocal('applications', []);
         }
+
+        // Fetch Deleted Applications
+        try {
+          const delSnap = await getDocs(collection(db, "deleted_applications"));
+          currentDeletedApplications = delSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          currentDeletedApplications.sort((a, b) => {
+            const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
+            const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
+            return dateB - dateA;
+          });
+          setLocal('deleted_applications', currentDeletedApplications);
+        } catch (_) {}
       } catch (err) {
         console.warn("Application inbox sync issue:", err);
       }
@@ -1150,22 +1190,103 @@ window.deleteJob = async (id) => {
 };
 
 /* ==========================================================================
-   APPLICATIONS INBOX
+   APPLICATIONS INBOX: FILTERING, MASS ACTIONS & FIREBASE TRASH ARCHIVE
    ========================================================================== */
+
+function populateAppRoleFilter() {
+  const roleSelect = document.getElementById('filter-app-role');
+  if (!roleSelect) return;
+
+  const currentSelected = roleSelect.value || 'all';
+  const roleSet = new Set();
+
+  // Extract from current open positions
+  currentJobs.forEach(j => {
+    if (j.title && j.title.trim()) roleSet.add(j.title.trim());
+  });
+
+  // Extract from active & deleted applications
+  currentApplications.forEach(a => {
+    const title = a.jobTitle || a.title || a.position || a.role;
+    if (title && title.trim()) roleSet.add(title.trim());
+  });
+  currentDeletedApplications.forEach(a => {
+    const title = a.jobTitle || a.title || a.position || a.role;
+    if (title && title.trim()) roleSet.add(title.trim());
+  });
+
+  const sortedRoles = Array.from(roleSet).sort((a, b) => a.localeCompare(b));
+  roleSelect.innerHTML = `<option value="all">All Roles (${roleSet.size})</option>` +
+    sortedRoles.map(r => `<option value="${escapeHtml(r)}" ${r === currentSelected ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('');
+}
+
+function getFilteredApplications() {
+  const sourceList = currentAppView === 'active' ? currentApplications : currentDeletedApplications;
+  const roleFilter = (document.getElementById('filter-app-role')?.value || 'all').toLowerCase().trim();
+  const statusFilter = (document.getElementById('filter-app-status')?.value || 'all').trim();
+  const searchQuery = (document.getElementById('search-app-input')?.value || '').toLowerCase().trim();
+
+  return sourceList.filter(app => {
+    // 1. Role Filter
+    if (roleFilter !== 'all') {
+      const jobTitle = (app.jobTitle || app.title || app.position || app.role || '').toLowerCase().trim();
+      if (jobTitle !== roleFilter) return false;
+    }
+
+    // 2. Status Filter (Only applicable in Active view)
+    if (currentAppView === 'active' && statusFilter !== 'all') {
+      const status = (app.status || 'New').trim();
+      if (status !== statusFilter) return false;
+    }
+
+    // 3. Search Query Filter (Applicant name, email, phone, role, notes)
+    if (searchQuery) {
+      const name = (app.applicantName || app.name || app.fullName || '').toLowerCase();
+      const email = (app.applicantEmail || app.email || '').toLowerCase();
+      const phone = (app.applicantPhone || app.phone || app.mobile || '').toLowerCase();
+      const role = (app.jobTitle || app.title || app.position || app.role || '').toLowerCase();
+      const notes = (app.notes || app.note || app.coverLetter || '').toLowerCase();
+      const matches = name.includes(searchQuery) || email.includes(searchQuery) || phone.includes(searchQuery) || role.includes(searchQuery) || notes.includes(searchQuery);
+      if (!matches) return false;
+    }
+
+    return true;
+  });
+}
 
 function renderApplicationsTable() {
   const tbody = document.getElementById('applications-table-body');
   if (!tbody) return;
 
-  const filterStatusEl = document.getElementById('filter-app-status');
-  const filterStatus = filterStatusEl ? filterStatusEl.value : 'all';
+  const displayedApps = getFilteredApplications();
 
-  const displayedApps = filterStatus === 'all'
-    ? currentApplications
-    : currentApplications.filter(a => (a.status || 'New') === filterStatus);
+  // Update Result Count Meta
+  const resultsMeta = document.getElementById('app-results-count');
+  if (resultsMeta) {
+    const totalCount = currentAppView === 'active' ? currentApplications.length : currentDeletedApplications.length;
+    resultsMeta.textContent = `Showing ${displayedApps.length} of ${totalCount}`;
+  }
+
+  // Update Dynamic Table Headers
+  const thDate = document.getElementById('th-app-date');
+  const thStatus = document.getElementById('th-app-status');
+  if (thDate) thDate.textContent = currentAppView === 'active' ? 'Submitted' : 'Deleted Date';
+  if (thStatus) thStatus.textContent = currentAppView === 'active' ? 'Status' : 'Deleted By';
+
+  // Update Master Checkbox state
+  const selectAllCb = document.getElementById('app-select-all');
+  if (selectAllCb) {
+    selectAllCb.checked = displayedApps.length > 0 && displayedApps.every(a => selectedAppIds.has(a.id));
+  }
+
+  // Update Bulk Actions Toolbar
+  updateBulkActionBar();
 
   if (displayedApps.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">${currentApplications.length === 0 ? 'No applications received yet.' : 'No applications found with status "' + escapeHtml(filterStatus) + '".'}</td></tr>`;
+    const emptyMsg = currentAppView === 'active'
+      ? (currentApplications.length === 0 ? 'No applications received yet.' : 'No active applications match the selected filters.')
+      : (currentDeletedApplications.length === 0 ? 'Trash archive is currently empty.' : 'No archived applications match the selected filters.');
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #64748b; padding: 32px 20px;">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -1176,43 +1297,417 @@ function renderApplicationsTable() {
     const phone = app.applicantPhone || app.phone || app.mobile || 'N/A';
     const resume = app.resumeUrl || app.resume || '';
     const status = app.status || 'New';
-    const dateStr = formatDateTime(app.submittedAt || app.createdAt);
+    const dateStr = formatDateTime(currentAppView === 'active' ? (app.submittedAt || app.createdAt) : (app.deletedAt || app.submittedAt));
+    const isSelected = selectedAppIds.has(app.id);
 
-    return `
-    <tr>
-      <td><strong style="color: #ffffff;">${escapeHtml(applicantName)}</strong></td>
-      <td>${escapeHtml(jobTitle)}</td>
-      <td>
-        <div>${escapeHtml(email)}</div>
-        <div style="font-size: 0.78rem; color: #94a3b8;">${escapeHtml(phone)}</div>
-      </td>
-      <td>
-        ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" style="color: #38bdf8; text-decoration: underline;">View Resume ↗</a>` : '<span style="color: #64748b;">No file</span>'}
-      </td>
-      <td style="font-size: 0.8rem; color: #94a3b8;">${dateStr}</td>
-      <td>
+    // Row status column
+    let statusCellHtml = '';
+    if (currentAppView === 'active') {
+      statusCellHtml = `
         <select class="form-select-sm" onchange="window.updateAppStatus('${app.id}', this.value)">
           <option value="New" ${status === 'New' ? 'selected' : ''}>New</option>
           <option value="Reviewing" ${status === 'Reviewing' ? 'selected' : ''}>Reviewing</option>
           <option value="Shortlisted" ${status === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
           <option value="Rejected" ${status === 'Rejected' ? 'selected' : ''}>Rejected</option>
         </select>
-      </td>
-      <td>
-        <button class="btn-table-action" onclick="window.viewApplication('${app.id}')">View Note</button>
-      </td>
-    </tr>
-  `;
+      `;
+    } else {
+      statusCellHtml = `
+        <span class="badge rose" style="font-size: 0.72rem;" title="Deleted by ${escapeHtml(app.deletedBy || 'Admin')}">
+          ${escapeHtml(app.deletedBy || 'Admin')}
+        </span>
+      `;
+    }
+
+    // Row actions column
+    let actionsCellHtml = '';
+    if (currentAppView === 'active') {
+      actionsCellHtml = `
+        <div class="app-row-actions">
+          <button class="btn-table-action" onclick="window.viewApplication('${app.id}')" title="View Full Details">View</button>
+          <button class="btn-table-action delete" onclick="window.moveToTrashApplication('${app.id}')" title="Move to Trash Archive">Trash</button>
+        </div>
+      `;
+    } else {
+      actionsCellHtml = `
+        <div class="app-row-actions">
+          <button class="btn-table-action" onclick="window.viewApplication('${app.id}')" title="View Full Details">View</button>
+          <button class="btn-table-action" style="color: #34d399; border-color: rgba(16,185,129,0.35);" onclick="window.restoreApplication('${app.id}')" title="Restore to Active Applications">Restore</button>
+          <button class="btn-table-action delete" onclick="window.permanentlyDeleteApplication('${app.id}')" title="Delete Permanently from Firestore">Purge</button>
+        </div>
+      `;
+    }
+
+    return `
+      <tr class="${isSelected ? 'row-selected' : ''}">
+        <td style="text-align: center;">
+          <input type="checkbox" class="table-checkbox app-row-checkbox" data-id="${app.id}" ${isSelected ? 'checked' : ''} onchange="window.toggleAppSelect('${app.id}', this.checked)" />
+        </td>
+        <td>
+          <strong style="color: #ffffff; display: block; line-height: 1.3;">${escapeHtml(applicantName)}</strong>
+        </td>
+        <td>
+          <span class="app-role-pill">${escapeHtml(jobTitle)}</span>
+        </td>
+        <td>
+          <div>${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #cbd5e1; text-decoration: none;">${escapeHtml(email)}</a>` : '<span style="color: #64748b;">N/A</span>'}</div>
+          <div style="font-size: 0.78rem; color: #94a3b8;">${escapeHtml(phone)}</div>
+        </td>
+        <td>
+          ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" style="color: #38bdf8; text-decoration: underline; font-size: 0.82rem;">Resume ↗</a>` : '<span style="color: #64748b; font-size: 0.8rem;">No file</span>'}
+        </td>
+        <td style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap;">${dateStr}</td>
+        <td>${statusCellHtml}</td>
+        <td>${actionsCellHtml}</td>
+      </tr>
+    `;
   }).join('');
 }
 
-// Bind Application status filter
-const filterAppStatusSelect = document.getElementById('filter-app-status');
-if (filterAppStatusSelect) {
-  filterAppStatusSelect.addEventListener('change', () => {
+function updateBulkActionBar() {
+  const bulkBar = document.getElementById('app-bulk-bar');
+  const countEl = document.getElementById('bulk-selected-count');
+  const buttonsEl = document.getElementById('bulk-action-buttons');
+  if (!bulkBar || !countEl || !buttonsEl) return;
+
+  if (selectedAppIds.size === 0) {
+    bulkBar.style.display = 'none';
+    return;
+  }
+
+  bulkBar.style.display = 'flex';
+  countEl.textContent = `${selectedAppIds.size} application${selectedAppIds.size > 1 ? 's' : ''} selected`;
+
+  if (currentAppView === 'active') {
+    buttonsEl.innerHTML = `
+      <button type="button" class="btn-bulk-action delete" onclick="window.bulkMoveToTrash()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        <span>Move to Trash (${selectedAppIds.size})</span>
+      </button>
+      <button type="button" class="btn-bulk-action deselect" onclick="window.deselectAllApps()">Deselect All</button>
+    `;
+  } else {
+    buttonsEl.innerHTML = `
+      <button type="button" class="btn-bulk-action restore" onclick="window.bulkRestoreApplications()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+        <span>Restore Selected (${selectedAppIds.size})</span>
+      </button>
+      <button type="button" class="btn-bulk-action delete" onclick="window.bulkPermanentlyDelete()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <span>Purge Permanently (${selectedAppIds.size})</span>
+      </button>
+      <button type="button" class="btn-bulk-action deselect" onclick="window.deselectAllApps()">Deselect All</button>
+    `;
+  }
+}
+
+// Checkbox selection methods
+window.toggleAppSelect = (id, checked) => {
+  if (checked) {
+    selectedAppIds.add(id);
+  } else {
+    selectedAppIds.delete(id);
+  }
+  renderApplicationsTable();
+};
+
+window.deselectAllApps = () => {
+  selectedAppIds.clear();
+  renderApplicationsTable();
+};
+
+// Master Checkbox handler
+const selectAllCb = document.getElementById('app-select-all');
+if (selectAllCb) {
+  selectAllCb.addEventListener('change', (e) => {
+    const displayed = getFilteredApplications();
+    if (e.target.checked) {
+      displayed.forEach(a => selectedAppIds.add(a.id));
+    } else {
+      displayed.forEach(a => selectedAppIds.delete(a.id));
+    }
     renderApplicationsTable();
   });
 }
+
+// View Switcher Tabs
+const tabAppActive = document.getElementById('tab-app-active');
+const tabAppTrash = document.getElementById('tab-app-trash');
+const statusFilterWrapper = document.getElementById('status-filter-wrapper');
+
+if (tabAppActive) {
+  tabAppActive.addEventListener('click', () => {
+    if (currentAppView === 'active') return;
+    currentAppView = 'active';
+    tabAppActive.classList.add('active');
+    if (tabAppTrash) tabAppTrash.classList.remove('active');
+    if (statusFilterWrapper) statusFilterWrapper.style.display = 'flex';
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
+if (tabAppTrash) {
+  tabAppTrash.addEventListener('click', () => {
+    if (currentAppView === 'trash') return;
+    currentAppView = 'trash';
+    tabAppTrash.classList.add('active');
+    if (tabAppActive) tabAppActive.classList.remove('active');
+    if (statusFilterWrapper) statusFilterWrapper.style.display = 'none';
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
+// Filters event listeners
+const filterAppRoleSelect = document.getElementById('filter-app-role');
+if (filterAppRoleSelect) {
+  filterAppRoleSelect.addEventListener('change', () => {
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
+const filterAppStatusSelect = document.getElementById('filter-app-status');
+if (filterAppStatusSelect) {
+  filterAppStatusSelect.addEventListener('change', () => {
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
+const searchAppInput = document.getElementById('search-app-input');
+if (searchAppInput) {
+  searchAppInput.addEventListener('input', () => {
+    renderApplicationsTable();
+  });
+}
+
+const btnResetAppFilters = document.getElementById('btn-reset-app-filters');
+if (btnResetAppFilters) {
+  btnResetAppFilters.addEventListener('click', () => {
+    if (searchAppInput) searchAppInput.value = '';
+    if (filterAppRoleSelect) filterAppRoleSelect.value = 'all';
+    if (filterAppStatusSelect) filterAppStatusSelect.value = 'all';
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
+// 1. Move Single Application to Trash Archive
+window.moveToTrashApplication = async (id) => {
+  const app = currentApplications.find(a => a.id === id);
+  if (!app) return;
+  if (!confirm(`Move application from "${app.applicantName || 'Candidate'}" to Trash Archive?`)) return;
+
+  const deletedRecord = {
+    ...app,
+    isDeleted: true,
+    deletedAt: new Date().toISOString(),
+    deletedBy: currentUser?.email || 'Admin'
+  };
+
+  // Update local arrays
+  currentApplications = currentApplications.filter(a => a.id !== id);
+  currentDeletedApplications.unshift(deletedRecord);
+  selectedAppIds.delete(id);
+  setLocal('applications', currentApplications);
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  // Firestore sync
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      // Write to deleted_applications and remove from active collection
+      await setDoc(doc(db, "deleted_applications", id), deletedRecord);
+      await deleteDoc(doc(db, "job_applications", id)).catch(() => {});
+      await deleteDoc(doc(db, "applications", id)).catch(() => {});
+    } catch (err) {
+      console.warn("Firestore move to trash error:", err);
+    }
+  }
+};
+
+// 2. Mass Move to Trash Archive
+window.bulkMoveToTrash = async () => {
+  if (selectedAppIds.size === 0) return;
+  const count = selectedAppIds.size;
+  if (!confirm(`Move ${count} selected application${count > 1 ? 's' : ''} to Trash Archive?`)) return;
+
+  const idsToMove = Array.from(selectedAppIds);
+  const now = new Date().toISOString();
+  const deletedBy = currentUser?.email || 'Admin';
+
+  const movedRecords = [];
+  idsToMove.forEach(id => {
+    const app = currentApplications.find(a => a.id === id);
+    if (app) {
+      movedRecords.push({
+        ...app,
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy
+      });
+    }
+  });
+
+  currentApplications = currentApplications.filter(a => !selectedAppIds.has(a.id));
+  currentDeletedApplications = [...movedRecords, ...currentDeletedApplications];
+  selectedAppIds.clear();
+
+  setLocal('applications', currentApplications);
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      for (const rec of movedRecords) {
+        await setDoc(doc(db, "deleted_applications", rec.id), rec);
+        await deleteDoc(doc(db, "job_applications", rec.id)).catch(() => {});
+        await deleteDoc(doc(db, "applications", rec.id)).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Firestore bulk move to trash error:", err);
+    }
+  }
+};
+
+// 3. Restore Single Application
+window.restoreApplication = async (id) => {
+  const app = currentDeletedApplications.find(a => a.id === id);
+  if (!app) return;
+
+  const restored = { ...app };
+  delete restored.isDeleted;
+  delete restored.deletedAt;
+  delete restored.deletedBy;
+
+  currentDeletedApplications = currentDeletedApplications.filter(a => a.id !== id);
+  currentApplications.unshift(restored);
+  selectedAppIds.delete(id);
+
+  setLocal('applications', currentApplications);
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      await setDoc(doc(db, "job_applications", id), restored);
+      await deleteDoc(doc(db, "deleted_applications", id)).catch(() => {});
+    } catch (err) {
+      console.warn("Firestore restore application error:", err);
+    }
+  }
+};
+
+// 4. Mass Restore Applications
+window.bulkRestoreApplications = async () => {
+  if (selectedAppIds.size === 0) return;
+  const idsToRestore = Array.from(selectedAppIds);
+
+  const restoredList = [];
+  idsToRestore.forEach(id => {
+    const app = currentDeletedApplications.find(a => a.id === id);
+    if (app) {
+      const restored = { ...app };
+      delete restored.isDeleted;
+      delete restored.deletedAt;
+      delete restored.deletedBy;
+      restoredList.push(restored);
+    }
+  });
+
+  currentDeletedApplications = currentDeletedApplications.filter(a => !selectedAppIds.has(a.id));
+  currentApplications = [...restoredList, ...currentApplications];
+  selectedAppIds.clear();
+
+  setLocal('applications', currentApplications);
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      for (const rec of restoredList) {
+        await setDoc(doc(db, "job_applications", rec.id), rec);
+        await deleteDoc(doc(db, "deleted_applications", rec.id)).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Firestore bulk restore error:", err);
+    }
+  }
+};
+
+// 5. Permanently Purge Single Application
+window.permanentlyDeleteApplication = async (id) => {
+  const app = currentDeletedApplications.find(a => a.id === id);
+  if (!confirm(`Are you sure you want to permanently delete the application from "${app?.applicantName || 'Candidate'}"? This action cannot be undone.`)) return;
+
+  currentDeletedApplications = currentDeletedApplications.filter(a => a.id !== id);
+  selectedAppIds.delete(id);
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      await deleteDoc(doc(db, "deleted_applications", id));
+    } catch (err) {
+      console.warn("Firestore purge application error:", err);
+    }
+  }
+};
+
+// 6. Mass Permanently Purge Applications
+window.bulkPermanentlyDelete = async () => {
+  if (selectedAppIds.size === 0) return;
+  const count = selectedAppIds.size;
+  if (!confirm(`PERMANENT ACTION: Completely delete ${count} application${count > 1 ? 's' : ''} from the database? This cannot be recovered.`)) return;
+
+  const idsToPurge = Array.from(selectedAppIds);
+  currentDeletedApplications = currentDeletedApplications.filter(a => !selectedAppIds.has(a.id));
+  selectedAppIds.clear();
+  setLocal('deleted_applications', currentDeletedApplications);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+
+      for (const id of idsToPurge) {
+        await deleteDoc(doc(db, "deleted_applications", id)).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Firestore bulk purge error:", err);
+    }
+  }
+};
 
 window.updateAppStatus = async (id, newStatus) => {
   const app = currentApplications.find(a => a.id === id);
@@ -1237,7 +1732,7 @@ window.updateAppStatus = async (id, newStatus) => {
 };
 
 window.viewApplication = (id) => {
-  const app = currentApplications.find(a => a.id === id);
+  const app = currentApplications.find(a => a.id === id) || currentDeletedApplications.find(a => a.id === id);
   if (!app) return;
 
   const applicantName = app.applicantName || app.name || app.fullName || 'Anonymous Candidate';
