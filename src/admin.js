@@ -515,11 +515,9 @@ function setupRealtimeListeners(db) {
     // 3. Jobs Listener
     try {
       const unsubJobs = onSnapshot(collection(db, "jobs"), (snapshot) => {
-        if (!snapshot.empty) {
-          currentJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          setLocal('jobs', currentJobs);
-          updateAllUIPanels();
-        }
+        currentJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.isDeleted);
+        setLocal('jobs', currentJobs);
+        updateAllUIPanels();
       }, err => console.warn("Live jobs listener note:", err));
       realtimeUnsubscribes.push(unsubJobs);
     } catch (_) {}
@@ -527,11 +525,9 @@ function setupRealtimeListeners(db) {
     // 4. Products Listener
     try {
       const unsubProds = onSnapshot(collection(db, "products"), (snapshot) => {
-        if (!snapshot.empty) {
-          currentProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          setLocal('products', currentProducts);
-          updateAllUIPanels();
-        }
+        currentProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => !p.isDeleted);
+        setLocal('products', currentProducts);
+        updateAllUIPanels();
       }, err => console.warn("Live products listener note:", err));
       realtimeUnsubscribes.push(unsubProds);
     } catch (_) {}
@@ -701,16 +697,26 @@ async function loadAllData() {
         console.warn("Application inbox sync issue:", err);
       }
 
-      // 2. Fetch Jobs (Career Positions) with auto-seeding
+      // 2. Fetch Jobs (Career Positions)
       try {
+        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const deletedJobSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
         const deletedJobIds = new Set(deletedJobSnap.docs ? deletedJobSnap.docs.map(d => d.id) : []);
 
-        const jSnap = await getDocs(collection(db, "jobs"));
+        let jSnap;
+        try {
+          jSnap = await getDocsFromServer(collection(db, "jobs"));
+        } catch (_) {
+          jSnap = await getDocs(collection(db, "jobs"));
+        }
         let fetchedJobs = jSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        for (const defJob of DEFAULT_JOBS) {
-          if (!deletedJobIds.has(defJob.id) && !fetchedJobs.some(j => j.id === defJob.id)) {
+        // Filter out any jobs present in deleted_jobs or marked isDeleted
+        fetchedJobs = fetchedJobs.filter(j => !deletedJobIds.has(j.id) && !j.isDeleted);
+
+        // Only seed default jobs if Firestore jobs collection AND deleted_jobs are both 100% empty
+        if (fetchedJobs.length === 0 && deletedJobIds.size === 0) {
+          for (const defJob of DEFAULT_JOBS) {
             fetchedJobs.push(defJob);
             try {
               await setDoc(doc(db, "jobs", defJob.id), defJob, { merge: true });
@@ -718,24 +724,33 @@ async function loadAllData() {
           }
         }
 
-        if (fetchedJobs.length > 0) {
-          currentJobs = fetchedJobs;
-          setLocal('jobs', currentJobs);
-        }
+        currentJobs = fetchedJobs;
+        setLocal('jobs', currentJobs);
+        renderJobsTable();
       } catch (err) {
         console.warn("Job positions sync issue:", err);
       }
 
-      // 3. Fetch Products with auto-seeding
+      // 3. Fetch Products
       try {
+        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const deletedProdSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
         const deletedProdIds = new Set(deletedProdSnap.docs ? deletedProdSnap.docs.map(d => d.id) : []);
 
-        const pSnap = await getDocs(collection(db, "products"));
+        let pSnap;
+        try {
+          pSnap = await getDocsFromServer(collection(db, "products"));
+        } catch (_) {
+          pSnap = await getDocs(collection(db, "products"));
+        }
         let fetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        for (const defProd of DEFAULT_PRODUCTS) {
-          if (!deletedProdIds.has(defProd.id) && !fetchedProducts.some(p => p.id === defProd.id)) {
+        // Filter out any products present in deleted_products or marked isDeleted
+        fetchedProducts = fetchedProducts.filter(p => !deletedProdIds.has(p.id) && !p.isDeleted);
+
+        // Only seed default products if Firestore products collection AND deleted_products are both 100% empty
+        if (fetchedProducts.length === 0 && deletedProdIds.size === 0) {
+          for (const defProd of DEFAULT_PRODUCTS) {
             fetchedProducts.push(defProd);
             try {
               await setDoc(doc(db, "products", defProd.id), defProd, { merge: true });
@@ -743,10 +758,9 @@ async function loadAllData() {
           }
         }
 
-        if (fetchedProducts.length > 0) {
-          currentProducts = fetchedProducts;
-          setLocal('products', currentProducts);
-        }
+        currentProducts = fetchedProducts;
+        setLocal('products', currentProducts);
+        renderProductsTable();
       } catch (err) {
         console.warn("Products sync issue:", err);
       }
@@ -1044,18 +1058,33 @@ window.editProduct = (id) => {
 
 window.deleteProduct = async (id) => {
   if (!confirm('Are you sure you want to delete this product?')) return;
+  const target = currentProducts.find(p => p.id === id);
   currentProducts = currentProducts.filter(p => p.id !== id);
   setLocal('products', currentProducts);
   renderProductsTable();
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, doc, deleteDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, doc, deleteDoc, setDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      await deleteDoc(doc(db, "products", id));
-      await setDoc(doc(db, "deleted_products", id), { id, deletedAt: new Date().toISOString() });
+
+      // 1. Delete document by ID
+      await deleteDoc(doc(db, "products", id)).catch(() => {});
+      await setDoc(doc(db, "deleted_products", id), { id, name: target?.name || '', deletedAt: new Date().toISOString() }).catch(() => {});
+
+      // 2. Also purge any duplicate document matching the exact name
+      if (target && target.name) {
+        try {
+          const q = query(collection(db, "products"), where("name", "==", target.name));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, "products", d.id)).catch(() => {});
+            await setDoc(doc(db, "deleted_products", d.id), { id: d.id, name: target.name, deletedAt: new Date().toISOString() }).catch(() => {});
+          }
+        } catch (_) {}
+      }
     } catch (err) {
       console.warn("Could not delete product from Firestore:", err);
     }
@@ -1171,18 +1200,33 @@ window.editJob = (id) => {
 
 window.deleteJob = async (id) => {
   if (!confirm('Are you sure you want to delete this job posting?')) return;
+  const target = currentJobs.find(j => j.id === id);
   currentJobs = currentJobs.filter(j => j.id !== id);
   setLocal('jobs', currentJobs);
   renderJobsTable();
 
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, doc, deleteDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, doc, deleteDoc, setDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      await deleteDoc(doc(db, "jobs", id));
-      await setDoc(doc(db, "deleted_jobs", id), { id, deletedAt: new Date().toISOString() });
+
+      // 1. Delete document by ID
+      await deleteDoc(doc(db, "jobs", id)).catch(() => {});
+      await setDoc(doc(db, "deleted_jobs", id), { id, title: target?.title || '', deletedAt: new Date().toISOString() }).catch(() => {});
+
+      // 2. Also purge any duplicate or lingering document matching the exact title
+      if (target && target.title) {
+        try {
+          const q = query(collection(db, "jobs"), where("title", "==", target.title));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, "jobs", d.id)).catch(() => {});
+            await setDoc(doc(db, "deleted_jobs", d.id), { id: d.id, title: target.title, deletedAt: new Date().toISOString() }).catch(() => {});
+          }
+        } catch (_) {}
+      }
     } catch (err) {
       console.warn("Could not delete job from Firestore:", err);
     }

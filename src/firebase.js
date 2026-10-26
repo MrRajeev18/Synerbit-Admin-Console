@@ -156,11 +156,13 @@ const setLocal = (key, data) => {
 };
 
 // Initialize default local store if empty
-if (!localStorage.getItem("synerbit_products")) {
-  setLocal("products", DEFAULT_PRODUCTS);
-}
-if (!localStorage.getItem("synerbit_jobs")) {
-  setLocal("jobs", DEFAULT_JOBS);
+if (!isFirebaseConfigured()) {
+  if (!localStorage.getItem("synerbit_products")) {
+    setLocal("products", DEFAULT_PRODUCTS);
+  }
+  if (!localStorage.getItem("synerbit_jobs")) {
+    setLocal("jobs", DEFAULT_JOBS);
+  }
 }
 if (!localStorage.getItem("synerbit_applications")) {
   setLocal("applications", []);
@@ -197,12 +199,12 @@ if (!localStorage.getItem("synerbit_team")) {
    ========================================================================== */
 
 /**
- * Fetch all active products
+ * Fetch all active products directly from server without resurrecting deleted items
  */
 export async function getProducts() {
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
@@ -211,39 +213,33 @@ export async function getProducts() {
       const deletedSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
       const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
 
-      const snapshot = await getDocs(collection(db, "products"));
+      let snapshot;
+      try {
+        snapshot = await getDocsFromServer(collection(db, "products"));
+      } catch (_) {
+        snapshot = await getDocs(collection(db, "products"));
+      }
       let remoteProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // Auto-seed missing default products into Firestore if not deleted
-      let seededAny = false;
-      for (const defProd of DEFAULT_PRODUCTS) {
-        if (!deletedIds.has(defProd.id) && !remoteProducts.some(p => p.id === defProd.id)) {
-          remoteProducts.push(defProd);
-          try {
-            await setDoc(doc(db, "products", defProd.id), defProd, { merge: true });
-            seededAny = true;
-          } catch (_) {}
-        }
-      }
+      // Strictly exclude deleted products
+      remoteProducts = remoteProducts.filter(p => !deletedIds.has(p.id) && !p.isDeleted);
 
-      if (remoteProducts.length > 0) {
-        setLocal("products", remoteProducts);
-        return remoteProducts;
-      }
+      setLocal("products", remoteProducts);
+      return remoteProducts;
     } catch (err) {
       console.warn("Live Firebase getProducts failed, using local fallback:", err);
     }
   }
-  return getLocal("products", DEFAULT_PRODUCTS);
+  return getLocal("products", []);
 }
 
 /**
- * Fetch all active job listings
+ * Fetch all active job listings directly from server without resurrecting deleted jobs
  */
 export async function getJobs() {
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
@@ -252,29 +248,50 @@ export async function getJobs() {
       const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
       const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
 
-      const snapshot = await getDocs(collection(db, "jobs"));
+      let snapshot;
+      try {
+        snapshot = await getDocsFromServer(collection(db, "jobs"));
+      } catch (_) {
+        snapshot = await getDocs(collection(db, "jobs"));
+      }
       let remoteJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // Auto-seed missing default jobs into Firestore if not deleted
-      for (const defJob of DEFAULT_JOBS) {
-        if (!deletedIds.has(defJob.id) && !remoteJobs.some(j => j.id === defJob.id)) {
-          remoteJobs.push(defJob);
-          try {
-            await setDoc(doc(db, "jobs", defJob.id), defJob, { merge: true });
-          } catch (_) {}
-        }
-      }
+      // Strictly filter out deleted jobs
+      remoteJobs = remoteJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted);
 
-      if (remoteJobs.length > 0) {
-        setLocal("jobs", remoteJobs);
-        return remoteJobs.filter(j => j.status === "Active");
-      }
+      setLocal("jobs", remoteJobs);
+      return remoteJobs.filter(j => j.status === "Active");
     } catch (err) {
       console.warn("Live Firebase getJobs failed, using local fallback:", err);
     }
   }
-  const jobs = getLocal("jobs", DEFAULT_JOBS);
+  const jobs = getLocal("jobs", []);
   return jobs.filter(j => j.status === "Active");
+}
+
+/**
+ * Subscribe to realtime active job updates
+ */
+export function subscribeToJobs(callback) {
+  if (!isFirebaseConfigured()) return () => {};
+  let unsub = () => {};
+  import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js").then(({ getFirestore, collection, onSnapshot, getDocs }) => {
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then(async ({ initializeApp, getApps }) => {
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
+      const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
+
+      unsub = onSnapshot(collection(db, "jobs"), (snapshot) => {
+        let liveJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        liveJobs = liveJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted && j.status === "Active");
+        setLocal("jobs", liveJobs);
+        if (typeof callback === "function") callback(liveJobs);
+      }, err => console.warn("Realtime jobs subscription note:", err));
+    });
+  }).catch(() => {});
+  return () => { try { unsub(); } catch (_) {} };
 }
 
 /**
