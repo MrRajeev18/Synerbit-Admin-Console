@@ -1410,41 +1410,142 @@ window.deleteContact = async (id) => {
    TEAM & GRANULAR ROLE-BASED ACCESS (SUPER ADMIN)
    ========================================================================== */
 
+function getInitials(nameOrEmail) {
+  if (!nameOrEmail) return 'U';
+  const clean = nameOrEmail.trim();
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2 && parts[0] && parts[1]) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function getAvatarGradient(seed) {
+  const gradients = [
+    'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+    'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+    'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+    'linear-gradient(135deg, #10b981 0%, #0284c7 100%)',
+    'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)'
+  ];
+  let hash = 0;
+  for (let i = 0; i < (seed || '').length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % gradients.length;
+  return gradients[idx];
+}
+
 function renderTeamTable() {
   const tbody = document.getElementById('team-table-body');
   if (currentTeam.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 28px;">No team members found in Firebase backend.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 36px 20px;"><div style="font-size: 0.95rem; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">No team members found</div><div style="font-size: 0.8rem; color: #64748b;">Add members above to grant access to the Admin Console.</div></td></tr>';
     return;
   }
 
   tbody.innerHTML = currentTeam.map(member => {
+    const isSuper = isSuperAdminEmail(member.email) || member.isSuperAdmin === true;
     const p = member.permissions || {};
-    const permsList = [
-      p.products ? '<span class="badge cyan">Products</span>' : '',
-      p.jobs ? '<span class="badge emerald">Jobs</span>' : '',
-      p.applications ? '<span class="badge cyan">Applications</span>' : '',
-      p.ideas ? '<span class="badge amber">Ideas</span>' : '',
-      p.contacts ? '<span class="badge emerald">Contacts</span>' : '',
-      (p.team || member.isSuperAdmin) ? '<span class="badge rose">Team & Roles</span>' : ''
-    ].filter(Boolean).join(' ');
+    const name = member.name || (isSuper ? 'Super Admin' : 'Team Member');
+    const email = member.email || '';
+    const avatarGrad = getAvatarGradient(name + email);
+    const initials = getInitials(name);
 
+    // Module Permissions Cell
+    let permsContent = '';
+    if (isSuper) {
+      permsContent = `
+        <div class="perm-all-badge">
+          <svg class="perm-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+          <span>Full Access</span>
+          <span class="perm-count">All Modules (6/6)</span>
+        </div>
+      `;
+    } else {
+      const activePerms = [];
+      if (p.products) activePerms.push('Products');
+      if (p.jobs) activePerms.push('Jobs');
+      if (p.applications) activePerms.push('Applications');
+      if (p.ideas) activePerms.push('Ideas');
+      if (p.contacts) activePerms.push('Contacts');
+      if (p.team) activePerms.push('Team & Roles');
+
+      if (activePerms.length === 0) {
+        permsContent = '<span class="perm-none">No permissions assigned</span>';
+      } else {
+        permsContent = `
+          <div class="perm-chips-wrap">
+            ${activePerms.map(label => `<span class="perm-chip">${escapeHtml(label)}</span>`).join('')}
+          </div>
+        `;
+      }
+    }
+
+    // Role Title Badge
+    const roleBadge = isSuper ? `
+      <span class="role-badge role-super-admin">
+        <svg class="role-badge-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+        <span>Super Admin</span>
+      </span>
+    ` : `
+      <span class="role-badge role-member">
+        <span class="role-status-dot"></span>
+        <span>${escapeHtml(member.role || 'Member')}</span>
+      </span>
+    `;
+
+    // Date
     const formattedDate = member.createdAt 
       ? new Date(member.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : (member.updatedAt ? new Date(member.updatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Active');
 
+    // Action Cell
+    const actionCell = isSuper ? `
+      <span class="team-protected-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        <span>Protected Super Admin</span>
+      </span>
+    ` : `
+      <div class="team-actions-wrap">
+        <button class="btn-team-action edit" onclick="window.editMember('${member.id}')" title="Edit Permissions">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <span>Edit</span>
+        </button>
+        <button class="btn-team-action delete" onclick="window.deleteMember('${member.id}')" title="Remove Member">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          <span>Remove</span>
+        </button>
+      </div>
+    `;
+
     return `
-      <tr>
-        <td><strong style="color: #ffffff;">${escapeHtml(member.name || 'Member')}</strong></td>
-        <td><code style="color: #38bdf8;">${escapeHtml(member.email || '')}</code></td>
-        <td><span class="badge ${member.isSuperAdmin ? 'rose' : 'emerald'}">${escapeHtml(member.role || 'Member')}</span></td>
-        <td>${permsList || '<span style="color: #64748b; font-style: italic;">No permissions</span>'}</td>
-        <td style="color: #94a3b8; font-size: 0.82rem;">${formattedDate}</td>
+      <tr class="team-table-row ${isSuper ? 'row-super-admin' : ''}">
         <td>
-          ${(isSuperAdminEmail(member.email) || member.isSuperAdmin) ? '<span style="color: #64748b; font-size: 0.78rem; font-weight: 600;">Protected Super Admin</span>' : `
-            <button class="btn-table-action" onclick="window.editMember('${member.id}')">Edit Permissions</button>
-            <button class="btn-table-action delete" onclick="window.deleteMember('${member.id}')">Remove</button>
-          `}
+          <div class="team-user-cell">
+            <div class="team-user-avatar" style="background: ${avatarGrad};">
+              ${initials}
+            </div>
+            <div class="team-user-meta">
+              <span class="team-user-name">${escapeHtml(name)}</span>
+              ${isSuper ? '<span class="team-user-subtag">Owner &bull; Full Privileges</span>' : '<span class="team-user-subtag">Team Member</span>'}
+            </div>
+          </div>
         </td>
+        <td>
+          <a href="mailto:${escapeHtml(email)}" class="team-email-link" title="${escapeHtml(email)}">
+            <svg class="team-email-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+            <span>${escapeHtml(email)}</span>
+          </a>
+        </td>
+        <td>${roleBadge}</td>
+        <td>${permsContent}</td>
+        <td>
+          <div class="team-date-cell">
+            <svg class="team-date-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+            <span>${formattedDate}</span>
+          </div>
+        </td>
+        <td>${actionCell}</td>
       </tr>
     `;
   }).join('');
