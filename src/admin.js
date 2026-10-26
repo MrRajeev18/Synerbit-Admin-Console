@@ -112,7 +112,11 @@ function initAuth() {
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const userCred = await signInWithEmailAndPassword(auth, email, password);
-        await resolveUserPermissions(userCred.user.email, userCred.user);
+        const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
+        if (!authorized) {
+          authError.textContent = `No authorized account found for ${email}. Contact the Super Admin.`;
+          authError.style.display = 'block';
+        }
       } catch (err) {
         console.error('Firebase Auth error:', err);
         let friendlyMsg = err.message || 'Firebase login failed';
@@ -152,11 +156,38 @@ function initAuth() {
         onAuthStateChanged(auth, async (fbUser) => {
           if (fbUser) {
             console.log("Firebase Auth active user confirmed:", fbUser.email);
-            if (!currentUser) {
-              await resolveUserPermissions(fbUser.email, fbUser);
+            // Verify if user account was deleted or disabled in Firebase Auth backend
+            try {
+              await fbUser.reload();
+            } catch (err) {
+              if (err.code === 'auth/user-not-found' || err.code === 'auth/user-disabled') {
+                console.warn("User account deleted or disabled in Firebase Auth backend:", err);
+                await handleSignOut();
+                if (authError) {
+                  authError.textContent = 'This account has been deleted from the Firebase backend.';
+                  authError.style.display = 'block';
+                }
+                return;
+              }
+            }
+
+            // Verify authorization in Firestore team collection
+            const isAuthorized = await resolveUserPermissions(fbUser.email, fbUser, false);
+            if (!isAuthorized) {
+              console.warn("User has no profile in Firestore team. Signing out.");
+              await handleSignOut();
+              if (authError) {
+                authError.textContent = `No authorized account found for ${fbUser.email}. Contact the Super Admin.`;
+                authError.style.display = 'block';
+              }
             } else if (adminApp.style.display !== 'none') {
-              // Re-sync data now that auth state is officially verified in browser
               loadAllData();
+            }
+          } else {
+            // Firebase Auth has no active user
+            if (currentUser) {
+              console.warn("No active Firebase Auth user session. Signing out.");
+              handleSignOut();
             }
           }
         });
@@ -168,6 +199,11 @@ function initAuth() {
 async function handleSignOut() {
   sessionStorage.removeItem('synerbit_admin_session');
   currentUser = null;
+
+  realtimeUnsubscribes.forEach(unsub => {
+    try { if (typeof unsub === 'function') unsub(); } catch (_) {}
+  });
+  realtimeUnsubscribes = [];
 
   if (isFirebaseConfigured()) {
     try {
@@ -184,121 +220,74 @@ async function handleSignOut() {
   adminApp.style.display = 'none';
   authScreen.style.display = 'flex';
   if (loginForm) loginForm.reset();
-  if (authError) authError.style.display = 'none';
 }
 
-async function resolveUserPermissions(email, fbUser = null) {
+async function resolveUserPermissions(email, fbUser = null, isManualLogin = false) {
   const normEmail = (email || '').toLowerCase().trim();
+  let found = null;
 
-  // 1. Check local cache first
-  let team = getLocal('team', []);
-  let found = team.find(m => (m.email || '').toLowerCase().trim() === normEmail);
-
-  // 2. If not found locally, query live Firestore 'team' collection
   if (isFirebaseConfigured()) {
     try {
-      const { getFirestore, collection, getDocs, query, where, doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
 
-      if (!found) {
-        // Query by email
-        const qTeam = query(collection(db, "team"), where("email", "==", normEmail));
-        const teamSnap = await getDocs(qTeam);
-        if (!teamSnap.empty) {
-          found = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() };
-        } else if (fbUser && fbUser.uid) {
-          // Query by UID
-          const userDoc = await getDoc(doc(db, "team", fbUser.uid));
-          if (userDoc.exists()) {
-            found = { id: userDoc.id, ...userDoc.data() };
-          }
-        }
+      // 1. Fetch live team members directly from Firestore
+      const allTeamSnap = await getDocs(collection(db, "team"));
+      currentTeam = allTeamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLocal('team', currentTeam);
+
+      // 2. Locate member by email or UID
+      found = currentTeam.find(m => (m.email || '').toLowerCase().trim() === normEmail);
+      if (!found && fbUser && fbUser.uid) {
+        found = currentTeam.find(m => m.id === fbUser.uid);
       }
 
-      // Also ensure all team members from Firestore are merged into local cache
-      try {
-        const allTeamSnap = await getDocs(collection(db, "team"));
-        if (!allTeamSnap.empty) {
-          currentTeam = allTeamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-          if (!currentTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
-            currentTeam.unshift(DEFAULT_SUPER_ADMIN);
-          }
+      // 3. If user is NOT found in Firestore team:
+      if (!found) {
+        // ONLY provision if this is an explicit manual login form submission (meaning valid password was entered)
+        if (isManualLogin && fbUser) {
+          const isOwner = normEmail === 'rajeev@synerbit.in';
+          const newMember = {
+            id: fbUser.uid || `member-${Date.now()}`,
+            name: fbUser.displayName || (isOwner ? 'Rajeev Ranjan' : normEmail.split('@')[0]),
+            email: normEmail,
+            role: isOwner ? 'Super Admin' : 'Console Member',
+            isSuperAdmin: isOwner,
+            permissions: {
+              products: true,
+              jobs: true,
+              applications: true,
+              ideas: true,
+              contacts: true,
+              team: isOwner
+            },
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(doc(db, "team", newMember.id), newMember, { merge: true });
+          found = newMember;
+          currentTeam.push(newMember);
           setLocal('team', currentTeam);
-          if (!found) {
-            found = currentTeam.find(m => (m.email || '').toLowerCase().trim() === normEmail);
-          }
         }
-      } catch (_) {}
-
+      }
     } catch (err) {
       console.warn("Could not query Firestore for user profile:", err);
     }
+  } else {
+    // Offline emergency fallback only when Firebase is completely unconfigured
+    let team = getLocal('team', []);
+    found = team.find(m => (m.email || '').toLowerCase().trim() === normEmail);
+    if (!found && (normEmail === 'rajeev@synerbit.in' || normEmail.includes('admin'))) {
+      found = DEFAULT_SUPER_ADMIN;
+    }
   }
 
-  // 3. User resolution & RBAC role assignment
   if (found) {
     loginUser(found);
-  } else if (normEmail === 'rajeev@synerbit.in' || normEmail.includes('admin') || normEmail.endsWith('@synerbit.in')) {
-    // Super Admin / Company Admin account
-    const superAdmin = {
-      id: fbUser?.uid || 'admin-super',
-      name: fbUser?.displayName || (normEmail === 'rajeev@synerbit.in' ? 'Rajeev Ranjan' : normEmail.split('@')[0]),
-      email: normEmail,
-      role: 'Super Admin',
-      isSuperAdmin: true,
-      permissions: {
-        products: true,
-        jobs: true,
-        applications: true,
-        ideas: true,
-        contacts: true,
-        team: true
-      },
-      createdAt: new Date().toISOString()
-    };
-    if (isFirebaseConfigured()) {
-      try {
-        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        await setDoc(doc(db, "team", superAdmin.id), superAdmin, { merge: true });
-      } catch (_) {}
-    }
-    loginUser(superAdmin);
-  } else if (fbUser) {
-    // Authenticated user created directly in Firebase Auth backend
-    const newMember = {
-      id: fbUser.uid || `member-${Date.now()}`,
-      name: fbUser.displayName || normEmail.split('@')[0],
-      email: normEmail,
-      role: 'Console Member',
-      isSuperAdmin: false,
-      permissions: {
-        products: true,
-        jobs: true,
-        applications: true,
-        ideas: true,
-        contacts: true,
-        team: false
-      },
-      createdAt: new Date().toISOString()
-    };
-    if (isFirebaseConfigured()) {
-      try {
-        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        await setDoc(doc(db, "team", newMember.id), newMember, { merge: true });
-      } catch (_) {}
-    }
-    loginUser(newMember);
+    return true;
   } else {
-    authError.textContent = `No authorized account found for ${email}. Contact the Super Admin.`;
-    authError.style.display = 'block';
+    return false;
   }
 }
 
@@ -474,14 +463,25 @@ function setupRealtimeListeners(db) {
     // 6. Team Members Listener
     try {
       const unsubTeam = onSnapshot(collection(db, "team"), (snapshot) => {
-        if (!snapshot.empty) {
-          const liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          if (!liveTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
-            liveTeam.unshift(DEFAULT_SUPER_ADMIN);
+        const liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        currentTeam = liveTeam;
+        setLocal('team', liveTeam);
+        renderTeamTable();
+
+        // If the logged-in user was deleted from Firestore team in real time
+        if (currentUser) {
+          const userStillExists = liveTeam.some(m => 
+            (m.id && currentUser.id && m.id === currentUser.id) ||
+            ((m.email || '').toLowerCase().trim() === (currentUser.email || '').toLowerCase().trim())
+          );
+          if (!userStillExists) {
+            console.warn("Logged-in user was deleted from Firestore team. Logging out immediately.");
+            handleSignOut();
+            if (authError) {
+              authError.textContent = 'Your account has been deleted from the backend.';
+              authError.style.display = 'block';
+            }
           }
-          currentTeam = liveTeam;
-          setLocal('team', liveTeam);
-          renderTeamTable();
         }
       }, err => console.warn("Live team listener note:", err));
       realtimeUnsubscribes.push(unsubTeam);
@@ -685,17 +685,8 @@ async function loadAllData() {
       // 6. Fetch Team Members from Firestore
       try {
         const teamSnap = await getDocs(collection(db, "team"));
-        let fetchedTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (fetchedTeam.length > 0) {
-          if (!fetchedTeam.some(m => m.isSuperAdmin || (m.email || '').toLowerCase() === 'rajeev@synerbit.in')) {
-            fetchedTeam.unshift(DEFAULT_SUPER_ADMIN);
-          }
-          currentTeam = fetchedTeam;
-          setLocal('team', currentTeam);
-        } else {
-          // Initialize default super admin in Firestore
-          await setDoc(doc(db, "team", DEFAULT_SUPER_ADMIN.id), DEFAULT_SUPER_ADMIN, { merge: true });
-        }
+        currentTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setLocal('team', currentTeam);
       } catch (err) {
         console.warn("Team members sync issue:", err);
       }
