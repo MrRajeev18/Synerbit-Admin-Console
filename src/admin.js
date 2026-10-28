@@ -2278,10 +2278,11 @@ function renderTeamTable() {
     let permsContent = '';
     if (isSuper) {
       permsContent = `
-        <div class="perm-all-badge">
-          <svg class="perm-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-          <span>Full Access</span>
-          <span class="perm-count">All Modules (6/6)</span>
+        <div class="perm-chips-wrap">
+          <span class="perm-chip-all" title="Full unrestricted access to all console modules">
+            <svg class="perm-chip-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Full Access &bull; All Modules</span>
+          </span>
         </div>
       `;
     } else {
@@ -2293,7 +2294,16 @@ function renderTeamTable() {
       if (p.contacts) activePerms.push('Contacts');
       if (p.team) activePerms.push('Team & Roles');
 
-      if (activePerms.length === 0) {
+      if (activePerms.length === 6) {
+        permsContent = `
+          <div class="perm-chips-wrap">
+            <span class="perm-chip-all" title="Full unrestricted access to all console modules">
+              <svg class="perm-chip-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              <span>Full Access &bull; All Modules</span>
+            </span>
+          </div>
+        `;
+      } else if (activePerms.length === 0) {
         permsContent = '<span class="perm-none">No permissions assigned</span>';
       } else {
         permsContent = `
