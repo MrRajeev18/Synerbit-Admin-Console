@@ -59,6 +59,33 @@ const PERMANENT_SUPER_ADMINS = [
 
 const DEFAULT_SUPER_ADMIN = PERMANENT_SUPER_ADMINS[0];
 
+// Team deduplication helper to ensure no duplicate email records in state or UI
+function deduplicateTeam(teamList) {
+  if (!Array.isArray(teamList)) return [];
+  const map = new Map();
+  for (const m of teamList) {
+    const emailKey = (m.email || '').toLowerCase().trim();
+    if (!emailKey) continue;
+    if (!map.has(emailKey)) {
+      map.set(emailKey, m);
+    } else {
+      const existing = map.get(emailKey);
+      const existingIsPreset = existing.id && existing.id.startsWith('admin-');
+      const mIsPreset = m.id && m.id.startsWith('admin-');
+      if (existingIsPreset && !mIsPreset) {
+        map.set(emailKey, { ...existing, ...m });
+      } else if (!existingIsPreset && mIsPreset) {
+        map.set(emailKey, { ...m, ...existing });
+      } else {
+        const dateA = new Date(existing.createdAt || existing.updatedAt || 0).getTime();
+        const dateB = new Date(m.createdAt || m.updatedAt || 0).getTime();
+        map.set(emailKey, dateB >= dateA ? { ...existing, ...m } : { ...m, ...existing });
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
 // State
 let currentUser = null;
 let currentProducts = [];
@@ -112,6 +139,38 @@ function initAuth() {
   }
   window.handleAdminSignOut = handleSignOut;
 
+  // Show / Hide Password toggle for Login Screen
+  const btnTogglePassword = document.getElementById('btn-toggle-password');
+  const loginPasswordInput = document.getElementById('login-password');
+  if (btnTogglePassword && loginPasswordInput) {
+    btnTogglePassword.addEventListener('click', () => {
+      const isPwd = loginPasswordInput.getAttribute('type') === 'password';
+      loginPasswordInput.setAttribute('type', isPwd ? 'text' : 'password');
+      const eyeShow = document.getElementById('eye-icon-show');
+      const eyeHide = document.getElementById('eye-icon-hide');
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = isPwd ? 'none' : 'block';
+        eyeHide.style.display = isPwd ? 'block' : 'none';
+      }
+    });
+  }
+
+  // Show / Hide Password toggle for Team Modal
+  const btnToggleTeamPassword = document.getElementById('btn-toggle-team-password');
+  const teamPasswordInput = document.getElementById('team-user-password');
+  if (btnToggleTeamPassword && teamPasswordInput) {
+    btnToggleTeamPassword.addEventListener('click', () => {
+      const isPwd = teamPasswordInput.getAttribute('type') === 'password';
+      teamPasswordInput.setAttribute('type', isPwd ? 'text' : 'password');
+      const eyeShow = document.getElementById('eye-icon-team-show');
+      const eyeHide = document.getElementById('eye-icon-team-hide');
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = isPwd ? 'none' : 'block';
+        eyeHide.style.display = isPwd ? 'block' : 'none';
+      }
+    });
+  }
+
   // Handle Login Form Submit (Strict Firebase Authentication Only)
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
@@ -146,7 +205,50 @@ function initAuth() {
           await setPersistence(auth, browserSessionPersistence);
         } catch (_) {}
 
-        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        let userCred;
+        try {
+          userCred = await signInWithEmailAndPassword(auth, email, password);
+        } catch (signInErr) {
+          // If login fails because user is not yet created in Firebase Authentication,
+          // verify if their account exists in Firestore 'team' or is a Super Admin.
+          const isUserNotFound = signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential';
+          if (isUserNotFound) {
+            const normEmail = email.toLowerCase().trim();
+            const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+            const db = getFirestore(app);
+            let teamSnap;
+            try {
+              teamSnap = await getDocs(collection(db, "team"));
+            } catch (fsErr) {
+              console.warn("Could not check Firestore team for pre-authorization:", fsErr);
+            }
+            const preAuth = teamSnap ? teamSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(m => (m.email || '').toLowerCase().trim() === normEmail) : null;
+
+            if (preAuth || isSuperAdminEmail(normEmail)) {
+              console.log("Pre-authorized backend member detected without active Firebase Auth user. Auto-provisioning Firebase Auth record...");
+              const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+              try {
+                userCred = await createUserWithEmailAndPassword(auth, email, password);
+                // Link newly provisioned UID to Firestore team doc if different
+                if (preAuth && preAuth.id !== userCred.user.uid) {
+                  try {
+                    await setDoc(doc(db, "team", userCred.user.uid), { ...preAuth, id: userCred.user.uid, updatedAt: new Date().toISOString() }, { merge: true });
+                  } catch (_) {}
+                }
+              } catch (createErr) {
+                if (createErr.code === 'auth/email-already-in-use') {
+                  throw new Error('Invalid email or password. Please check your credentials.');
+                }
+                throw createErr;
+              }
+            } else {
+              throw signInErr;
+            }
+          } else {
+            throw signInErr;
+          }
+        }
+
         const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
         if (!authorized) {
           authError.textContent = `Access Denied: Account (${email}) is not registered in the Firebase backend. Please contact the Super Admin.`;
@@ -319,10 +421,18 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
         try {
           await setDoc(doc(db, "team", superAdminRecord.id), superAdminRecord, { merge: true });
         } catch (_) {}
+        // Clean up duplicate Firestore documents for this email if multiple doc IDs exist
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        for (const docItem of currentTeam) {
+          if ((docItem.email || '').toLowerCase().trim() === normEmail && docItem.id !== superAdminRecord.id) {
+            try {
+              await deleteDoc(doc(db, "team", docItem.id));
+              console.log("Deleted duplicate Super Admin doc from Firestore:", docItem.id);
+            } catch (_) {}
+          }
+        }
         found = superAdminRecord;
-        const idx = currentTeam.findIndex(m => (m.email || '').toLowerCase().trim() === normEmail);
-        if (idx >= 0) currentTeam[idx] = superAdminRecord;
-        else currentTeam.unshift(superAdminRecord);
+        currentTeam = deduplicateTeam([superAdminRecord, ...currentTeam.filter(m => (m.email || '').toLowerCase().trim() !== normEmail)]);
       }
     } catch (err) {
       console.warn("Could not query Firestore for user profile:", err);
@@ -577,7 +687,7 @@ function setupRealtimeListeners(db) {
           }
         }
 
-        currentTeam = liveTeam;
+        currentTeam = deduplicateTeam(liveTeam);
         try { localStorage.removeItem('synerbit_team'); } catch (_) {}
         renderTeamTable();
 
@@ -843,7 +953,42 @@ async function loadAllData() {
           }
         }
 
-        currentTeam = fetchedTeam;
+        // Deduplicate in Firestore backend and in currentTeam state
+        // If there are duplicate documents with the same email (e.g. admin-rajeev-master and UID doc)
+        const emailToDocs = new Map();
+        for (const docItem of fetchedTeam) {
+          const eKey = (docItem.email || '').toLowerCase().trim();
+          if (!eKey) continue;
+          if (!emailToDocs.has(eKey)) emailToDocs.set(eKey, []);
+          emailToDocs.get(eKey).push(docItem);
+        }
+
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        for (const [eKey, docsList] of emailToDocs.entries()) {
+          if (docsList.length > 1) {
+            // Sort: Prioritize document with Auth UID or newer timestamp; delete older duplicate doc
+            docsList.sort((a, b) => {
+              const aIsMaster = a.id && a.id.startsWith('admin-') && a.id.includes('-master');
+              const bIsMaster = b.id && b.id.startsWith('admin-') && b.id.includes('-master');
+              if (aIsMaster && !bIsMaster) return 1;
+              if (!aIsMaster && bIsMaster) return -1;
+              const tA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+              const tB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+              return tB - tA;
+            });
+            for (let i = 1; i < docsList.length; i++) {
+              const dupDoc = docsList[i];
+              try {
+                await deleteDoc(doc(db, "team", dupDoc.id));
+                console.log(`Cleaned duplicate team member document from Firestore: ${dupDoc.id} (${eKey})`);
+              } catch (delErr) {
+                console.warn(`Could not delete duplicate team doc ${dupDoc.id}:`, delErr);
+              }
+            }
+          }
+        }
+
+        currentTeam = deduplicateTeam(fetchedTeam);
         try { localStorage.removeItem('synerbit_team'); } catch (_) {}
         renderTeamTable();
       } catch (err) {
@@ -2006,12 +2151,13 @@ function getAvatarGradient(seed) {
 
 function renderTeamTable() {
   const tbody = document.getElementById('team-table-body');
-  if (currentTeam.length === 0) {
+  const displayTeam = deduplicateTeam(currentTeam);
+  if (displayTeam.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 36px 20px;"><div style="font-size: 0.95rem; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">No team members found</div><div style="font-size: 0.8rem; color: #64748b;">Add members above to grant access to the Admin Console.</div></td></tr>';
     return;
   }
 
-  tbody.innerHTML = currentTeam.map(member => {
+  tbody.innerHTML = displayTeam.map(member => {
     const isSuper = isSuperAdminEmail(member.email) || member.isSuperAdmin === true;
     const p = member.permissions || {};
     const name = member.name || (isSuper ? 'Super Admin' : 'Team Member');

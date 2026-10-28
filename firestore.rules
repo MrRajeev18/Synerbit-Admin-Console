@@ -81,9 +81,11 @@ service cloud.firestore {
     }
 
     // 6. TEAM MEMBERS (RBAC):
-    // Only authenticated admins can view and manage team member access.
+    // Read is allowed so pre-authorized team members can verify and login.
+    // Only authenticated admins can add, edit, or delete team members.
     match /team/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // Fallback rule: deny all other collections by default for security
