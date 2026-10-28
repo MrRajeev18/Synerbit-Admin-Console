@@ -70,6 +70,7 @@ let selectedAppIds = new Set();
 let currentIdeas = [];
 let currentContacts = [];
 let currentTeam = [];
+let isSigningIn = false;
 
 // DOM Elements
 const authScreen = document.getElementById('auth-screen');
@@ -132,6 +133,8 @@ function initAuth() {
         btnSubmit.textContent = 'Verifying with Firebase...';
       }
 
+      isSigningIn = true;
+
       try {
         const { getAuth, signInWithEmailAndPassword, setPersistence, browserSessionPersistence } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
         const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
@@ -161,6 +164,7 @@ function initAuth() {
         authError.textContent = friendlyMsg;
         authError.style.display = 'block';
       } finally {
+        isSigningIn = false;
         if (btnSubmit) {
           btnSubmit.disabled = false;
           btnSubmit.textContent = 'Sign In to Console';
@@ -183,21 +187,16 @@ function initAuth() {
 
   // Monitor Firebase Auth state change for token renewal and live reconnect
   if (isFirebaseConfigured()) {
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js").then(({ getAuth, onAuthStateChanged, signOut }) => {
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js").then(({ getAuth, onAuthStateChanged }) => {
       import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then(({ initializeApp, getApps }) => {
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);
         onAuthStateChanged(auth, async (fbUser) => {
-          // If the user has NOT logged in via the login form in this session, DO NOT AUTO-LOGIN!
-          if (!currentUser) {
-            if (fbUser) {
-              console.log("Stale background Firebase session detected on login screen. Signing out to enforce explicit password entry.");
-              try {
-                await signOut(auth);
-              } catch (_) {}
-            }
-            return;
-          }
+          // If a manual sign-in is currently processing in loginForm, do not interfere
+          if (isSigningIn) return;
+
+          // If user is sitting on the login screen, DO NOT auto-login to dashboard!
+          if (!currentUser) return;
 
           if (fbUser) {
             console.log("Firebase Auth active user confirmed:", fbUser.email);
@@ -230,7 +229,7 @@ function initAuth() {
             }
           } else {
             // Firebase Auth has no active user
-            if (currentUser) {
+            if (currentUser && !isSigningIn) {
               console.warn("No active Firebase Auth user session. Signing out.");
               handleSignOut();
             }
