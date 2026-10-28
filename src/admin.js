@@ -4,7 +4,7 @@
  * and CRUD operations for Products, Jobs, Applications, and Ideas.
  */
 
-import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS, DEFAULT_APPLICATIONS, DEFAULT_IDEAS, DEFAULT_CONTACTS } from './firebase.js';
+import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS } from './firebase.js';
 
 // Local storage data caching disabled — all data strictly from live Firebase backend
 const getLocal = (_key, fallback = []) => fallback;
@@ -90,12 +90,12 @@ function deduplicateTeam(teamList) {
 let currentUser = null;
 let currentProducts = [...DEFAULT_PRODUCTS];
 let currentJobs = [...DEFAULT_JOBS];
-let currentApplications = [...DEFAULT_APPLICATIONS];
+let currentApplications = [];
 let currentDeletedApplications = [];
 let currentAppView = 'active'; // 'active' | 'trash'
 let selectedAppIds = new Set();
-let currentIdeas = [...DEFAULT_IDEAS];
-let currentContacts = [...DEFAULT_CONTACTS];
+let currentIdeas = [];
+let currentContacts = [];
 let currentTeam = [];
 let isSigningIn = false;
 
@@ -707,7 +707,7 @@ function setupRealtimeListeners(db) {
     // 1. Applications Listener
     try {
       const unsubApps = onSnapshot(collection(db, "job_applications"), (snapshot) => {
-        if (snapshot.docs && snapshot.docs.length > 0) {
+        if (snapshot.docs) {
           const liveApps = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           liveApps.sort((a, b) => {
             const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
@@ -741,7 +741,7 @@ function setupRealtimeListeners(db) {
     // 2. Ideas Listener
     try {
       const unsubIdeas = onSnapshot(collection(db, "idea_submissions"), (snapshot) => {
-        if (snapshot.docs && snapshot.docs.length > 0) {
+        if (snapshot.docs) {
           const liveIdeas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           liveIdeas.sort((a, b) => {
             const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
@@ -780,7 +780,7 @@ function setupRealtimeListeners(db) {
     // 5. Contact Messages Listener
     try {
       const unsubContacts = onSnapshot(collection(db, "contact_messages"), (snapshot) => {
-        if (snapshot.docs && snapshot.docs.length > 0) {
+        if (snapshot.docs) {
           const liveContacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           liveContacts.sort((a, b) => {
             const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
@@ -866,12 +866,9 @@ function updateAllUIPanels() {
 }
 
 async function loadAllData() {
-  // Ensure baseline data is always active so dashboard is never 0
+  // Ensure baseline products, jobs, and team are active
   if (!currentProducts || currentProducts.length === 0) currentProducts = [...DEFAULT_PRODUCTS];
   if (!currentJobs || currentJobs.length === 0) currentJobs = [...DEFAULT_JOBS];
-  if (!currentApplications || currentApplications.length === 0) currentApplications = [...DEFAULT_APPLICATIONS];
-  if (!currentIdeas || currentIdeas.length === 0) currentIdeas = [...DEFAULT_IDEAS];
-  if (!currentContacts || currentContacts.length === 0) currentContacts = [...DEFAULT_CONTACTS];
   if (!currentTeam || currentTeam.length === 0) currentTeam = [...PERMANENT_SUPER_ADMINS];
 
   updateAllUIPanels();
@@ -917,8 +914,8 @@ async function loadAllData() {
             return dateB - dateA;
           });
           currentApplications = liveApps;
-        } else if (currentApplications.length === 0) {
-          currentApplications = [...DEFAULT_APPLICATIONS];
+        } else {
+          currentApplications = [];
         }
 
         const delApps = await safeQueryDocs("deleted_applications");
@@ -985,8 +982,8 @@ async function loadAllData() {
             return dateB - dateA;
           });
           currentIdeas = liveIdeas;
-        } else if (currentIdeas.length === 0) {
-          currentIdeas = [...DEFAULT_IDEAS];
+        } else {
+          currentIdeas = [];
         }
       } catch (err) {
         console.warn("Ideas sync issue:", err);
@@ -1011,8 +1008,8 @@ async function loadAllData() {
             return dateB - dateA;
           });
           currentContacts = liveContacts;
-        } else if (currentContacts.length === 0) {
-          currentContacts = [...DEFAULT_CONTACTS];
+        } else {
+          currentContacts = [];
         }
       } catch (err) {
         console.warn("Contacts sync issue:", err);
