@@ -1142,21 +1142,38 @@ function renderProductsTable() {
     if (p.iosUrl && p.iosUrl !== '#') links.push(`<a href="${escapeHtml(p.iosUrl)}" target="_blank" style="color: #c084fc; text-decoration: none;">iOS ↗</a>`);
     const linksHtml = links.length ? links.join(' &bull; ') : '<span style="color: #64748b;">No links</span>';
 
+    // Automatic color mapping if not provided
+    let color = p.statusColor;
+    const stLower = (p.status || '').toLowerCase();
+    if (!color || color === 'cyan') {
+      if (stLower.includes('live')) color = 'emerald';
+      else if (stLower.includes('alpha')) color = 'amber';
+      else if (stLower.includes('dev') || stLower.includes('beta')) color = 'cyan';
+      else color = 'cyan';
+    }
+
     return `
       <tr>
-        <td>
-          <strong style="color: #ffffff;">${escapeHtml(p.name)}</strong>
-          <div style="font-size: 0.78rem; color: #94a3b8;">${escapeHtml(p.tagline || '')}</div>
+        <td style="vertical-align: middle;">
+          <strong style="color: #ffffff; font-size: 0.95rem;">${escapeHtml(p.name)}</strong>
+          <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">${escapeHtml(p.tagline || '')}</div>
         </td>
-        <td>${escapeHtml(p.category || 'Platform')}</td>
-        <td><span class="badge ${p.statusColor || 'cyan'}">${p.status}</span></td>
-        <td>
-          <div style="font-size: 0.8rem; margin-bottom: 4px;">${platformsHtml}</div>
+        <td style="vertical-align: middle; color: #cbd5e1;">${escapeHtml(p.category || 'Platform')}</td>
+        <td style="vertical-align: middle; white-space: nowrap;">
+          <span class="product-status-badge ${color}">
+            <span class="status-indicator-dot"></span>
+            <span>${escapeHtml(p.status)}</span>
+          </span>
+        </td>
+        <td style="vertical-align: middle;">
+          <div style="font-size: 0.8rem; margin-bottom: 4px; line-height: 1.4;">${platformsHtml}</div>
           <div style="font-size: 0.75rem;">${linksHtml}</div>
         </td>
-        <td>
-          <button class="btn-table-action" onclick="window.editProduct('${p.id}')">Edit</button>
-          <button class="btn-table-action delete" onclick="window.deleteProduct('${p.id}')">Delete</button>
+        <td style="vertical-align: middle; white-space: nowrap; text-align: right;">
+          <div style="display: inline-flex; gap: 8px; align-items: center; justify-content: flex-end;">
+            <button class="btn-table-action" onclick="window.editProduct('${p.id}')">Edit</button>
+            <button class="btn-table-action delete" onclick="window.deleteProduct('${p.id}')">Delete</button>
+          </div>
         </td>
       </tr>
     `;
