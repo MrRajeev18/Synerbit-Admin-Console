@@ -82,10 +82,11 @@ service cloud.firestore {
 
     // 6. TEAM MEMBERS (RBAC):
     // Read is allowed so pre-authorized team members can verify and login.
-    // Only authenticated admins can add, edit, or delete team members.
+    // Only authenticated Super Admins can add, edit, or delete team members.
+    // Self-write is allowed only when an authenticated user links their own UID on initial login.
     match /team/{userId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
     }
 
     // Fallback rule: deny all other collections by default for security

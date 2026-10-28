@@ -839,7 +839,16 @@ function updateAllUIPanels() {
 
   if (badgeApps) badgeApps.textContent = currentApplications.length;
   if (badgeIdeas) badgeIdeas.textContent = currentIdeas.length;
-  if (badgeContacts) badgeContacts.textContent = currentContacts.length;
+
+  const unreadContacts = currentContacts.filter(c => !c.isRead).length;
+  if (badgeContacts) {
+    badgeContacts.textContent = unreadContacts > 0 ? `${unreadContacts} new` : currentContacts.length;
+    if (unreadContacts > 0) {
+      badgeContacts.classList.add('rose');
+    } else {
+      badgeContacts.classList.remove('rose');
+    }
+  }
 
   const badgeActiveApps = document.getElementById('badge-active-apps-count');
   const badgeTrashApps = document.getElementById('badge-trash-apps-count');
@@ -1174,12 +1183,27 @@ function renderDashboardActivity() {
 
 function renderProductsTable() {
   const tbody = document.getElementById('products-table-body');
-  if (currentProducts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #64748b;">No products found.</td></tr>';
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('search-products-input');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  const filtered = currentProducts.filter(p => {
+    if (!query) return true;
+    const name = (p.name || '').toLowerCase();
+    const tagline = (p.tagline || '').toLowerCase();
+    const category = (p.category || '').toLowerCase();
+    const status = (p.status || '').toLowerCase();
+    return name.includes(query) || tagline.includes(query) || category.includes(query) || status.includes(query);
+  });
+
+  if (filtered.length === 0) {
+    const msg = currentProducts.length === 0 ? 'No products found.' : 'No products match your search.';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 32px 16px;">${msg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = currentProducts.map(p => {
+  tbody.innerHTML = filtered.map(p => {
     const webSt = p.webStatus || (p.status === 'Live' ? 'Live' : p.status);
     const platformItems = [];
     platformItems.push(`<span style="color: ${webSt === 'Live' ? '#34d399' : '#94a3b8'};">Web: ${escapeHtml(webSt)}</span>`);
@@ -1216,6 +1240,13 @@ function renderProductsTable() {
       </tr>
     `;
   }).join('');
+}
+
+const searchProductsInput = document.getElementById('search-products-input');
+if (searchProductsInput) {
+  searchProductsInput.addEventListener('input', () => {
+    renderProductsTable();
+  });
 }
 
 document.getElementById('btn-open-create-product').addEventListener('click', () => {
@@ -1347,12 +1378,29 @@ function getJobTypeBadge(type) {
 
 function renderJobsTable() {
   const tbody = document.getElementById('jobs-table-body');
-  if (currentJobs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b;">No jobs posted yet.</td></tr>';
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('search-jobs-input');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  const filtered = currentJobs.filter(j => {
+    if (!query) return true;
+    const title = (j.title || '').toLowerCase();
+    const dept = (j.department || '').toLowerCase();
+    const loc = (j.location || '').toLowerCase();
+    const type = (j.type || '').toLowerCase();
+    const exp = (j.experience || '').toLowerCase();
+    const st = (j.status || '').toLowerCase();
+    return title.includes(query) || dept.includes(query) || loc.includes(query) || type.includes(query) || exp.includes(query) || st.includes(query);
+  });
+
+  if (filtered.length === 0) {
+    const msg = currentJobs.length === 0 ? 'No jobs posted yet.' : 'No positions match your search.';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">${msg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = currentJobs.map(j => `
+  tbody.innerHTML = filtered.map(j => `
     <tr>
       <td>
         <strong style="color: #ffffff;">${escapeHtml(j.title)}</strong>
@@ -1368,6 +1416,13 @@ function renderJobsTable() {
       </td>
     </tr>
   `).join('');
+}
+
+const searchJobsInput = document.getElementById('search-jobs-input');
+if (searchJobsInput) {
+  searchJobsInput.addEventListener('input', () => {
+    renderJobsTable();
+  });
 }
 
 document.getElementById('btn-open-create-job').addEventListener('click', () => {
@@ -1521,17 +1576,19 @@ function getFilteredApplications() {
     // 2. Status Filter (Only applicable in Active view)
     if (currentAppView === 'active' && statusFilter !== 'all') {
       const status = (app.status || 'New').trim();
-      if (status !== statusFilter) return false;
+      const normStatus = status === 'Reviewing' ? 'Under Review' : status;
+      if (normStatus.toLowerCase() !== statusFilter.toLowerCase()) return false;
     }
 
-    // 3. Search Query Filter (Applicant name, email, phone, role, notes)
+    // 3. Search Query Filter (Applicant name, email, phone, role, notes, internal recruiter notes)
     if (searchQuery) {
       const name = (app.applicantName || app.name || app.fullName || '').toLowerCase();
       const email = (app.applicantEmail || app.email || '').toLowerCase();
       const phone = (app.applicantPhone || app.phone || app.mobile || '').toLowerCase();
       const role = (app.jobTitle || app.title || app.position || app.role || '').toLowerCase();
       const notes = (app.notes || app.note || app.coverLetter || '').toLowerCase();
-      const matches = name.includes(searchQuery) || email.includes(searchQuery) || phone.includes(searchQuery) || role.includes(searchQuery) || notes.includes(searchQuery);
+      const internalNotes = (app.internalNotes || '').toLowerCase();
+      const matches = name.includes(searchQuery) || email.includes(searchQuery) || phone.includes(searchQuery) || role.includes(searchQuery) || notes.includes(searchQuery) || internalNotes.includes(searchQuery);
       if (!matches) return false;
     }
 
@@ -1588,12 +1645,16 @@ function renderApplicationsTable() {
     // Row status column
     let statusCellHtml = '';
     if (currentAppView === 'active') {
+      const normStatus = status === 'Reviewing' ? 'Under Review' : status;
+      const statusSlug = normStatus.toLowerCase().replace(/\s+/g, '-');
       statusCellHtml = `
-        <select class="form-select-sm app-status-select status-${status.toLowerCase()}" onchange="this.className='form-select-sm app-status-select status-' + this.value.toLowerCase(); window.updateAppStatus('${app.id}', this.value)">
-          <option value="New" ${status === 'New' ? 'selected' : ''}>New</option>
-          <option value="Reviewing" ${status === 'Reviewing' ? 'selected' : ''}>Reviewing</option>
-          <option value="Shortlisted" ${status === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
-          <option value="Rejected" ${status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+        <select class="form-select-sm app-status-select status-${statusSlug}" onchange="const s = this.value; this.className='form-select-sm app-status-select status-' + s.toLowerCase().replace(/\\s+/g, '-'); window.updateAppStatus('${app.id}', s)">
+          <option value="New" ${normStatus === 'New' ? 'selected' : ''}>New</option>
+          <option value="Under Review" ${normStatus === 'Under Review' ? 'selected' : ''}>Under Review</option>
+          <option value="Shortlisted" ${normStatus === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
+          <option value="Interview" ${normStatus === 'Interview' ? 'selected' : ''}>Interview</option>
+          <option value="Hired" ${normStatus === 'Hired' ? 'selected' : ''}>Hired</option>
+          <option value="Rejected" ${normStatus === 'Rejected' ? 'selected' : ''}>Rejected</option>
         </select>
       `;
     } else {
@@ -2011,24 +2072,71 @@ window.bulkPermanentlyDeleteActive = async () => {
 window.bulkPermanentlyDelete = window.bulkPermanentlyDeleteActive;
 
 window.updateAppStatus = async (id, newStatus) => {
-  const app = currentApplications.find(a => a.id === id);
+  const app = currentApplications.find(a => a.id === id) || currentDeletedApplications.find(a => a.id === id);
   if (app) {
     app.status = newStatus;
     setLocal('applications', currentApplications);
+    setLocal('deleted_applications', currentDeletedApplications);
     renderDashboardActivity();
     renderApplicationsTable();
 
     if (isFirebaseConfigured()) {
       try {
-        const { getFirestore, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
         const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const db = getFirestore(fbApp);
-        await updateDoc(doc(db, "job_applications", id), { status: newStatus });
+        await setDoc(doc(db, "job_applications", id), { status: newStatus }, { merge: true });
+        try {
+          await setDoc(doc(db, "applications", id), { status: newStatus }, { merge: true });
+        } catch (_) {}
       } catch (e) {
         console.warn("Could not sync application status update to Firestore:", e);
       }
     }
+  }
+};
+
+window.saveAppNotes = async (id) => {
+  const notesEl = document.getElementById('modal-app-notes');
+  if (!notesEl) return;
+  const notes = notesEl.value.trim();
+  const app = currentApplications.find(a => a.id === id) || currentDeletedApplications.find(a => a.id === id);
+  if (app) {
+    app.internalNotes = notes;
+    setLocal('applications', currentApplications);
+    setLocal('deleted_applications', currentDeletedApplications);
+  }
+
+  const btnSave = document.getElementById('btn-save-app-notes');
+  if (btnSave) {
+    btnSave.textContent = 'Saving...';
+    btnSave.disabled = true;
+  }
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(fbApp);
+      await setDoc(doc(db, "job_applications", id), { internalNotes: notes }, { merge: true });
+      try {
+        await setDoc(doc(db, "applications", id), { internalNotes: notes }, { merge: true });
+      } catch (_) {}
+    } catch (e) {
+      console.warn("Could not save recruiter notes to Firestore:", e);
+    }
+  }
+
+  if (btnSave) {
+    btnSave.textContent = 'Saved ✓';
+    setTimeout(() => {
+      if (btnSave) {
+        btnSave.textContent = 'Save Notes';
+        btnSave.disabled = false;
+      }
+    }, 1500);
   }
 };
 
@@ -2043,23 +2151,56 @@ window.viewApplication = (id) => {
   const portfolio = app.portfolioUrl || app.portfolio || app.link || '';
   const note = app.notes || app.note || app.coverLetter || 'No note provided.';
   const resume = app.resumeUrl || app.resume || '';
+  const status = app.status || 'New';
+  const normStatus = status === 'Reviewing' ? 'Under Review' : status;
+  const statusSlug = normStatus.toLowerCase().replace(/\s+/g, '-');
+  const internalNotes = app.internalNotes || '';
 
   const body = document.getElementById('view-app-body');
   body.innerHTML = `
-    <div style="margin-bottom: 16px;">
-      <h4 style="color: #ffffff; font-size: 1.15rem; margin-bottom: 4px;">${escapeHtml(applicantName)}</h4>
-      <div style="color: #38bdf8; font-size: 0.88rem;">Applying for: ${escapeHtml(jobTitle)}</div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+      <div>
+        <h4 style="color: #ffffff; font-size: 1.2rem; margin-bottom: 4px;">${escapeHtml(applicantName)}</h4>
+        <div style="color: #38bdf8; font-size: 0.88rem;">Applying for: ${escapeHtml(jobTitle)}</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <label style="font-size: 0.8rem; color: #94a3b8; margin: 0;">Stage:</label>
+        <select class="form-select-sm app-status-select status-${statusSlug}" style="padding: 4px 10px; font-weight: 600;" onchange="const s = this.value; this.className='form-select-sm app-status-select status-' + s.toLowerCase().replace(/\\s+/g, '-'); window.updateAppStatus('${app.id}', s)">
+          <option value="New" ${normStatus === 'New' ? 'selected' : ''}>New</option>
+          <option value="Under Review" ${normStatus === 'Under Review' ? 'selected' : ''}>Under Review</option>
+          <option value="Shortlisted" ${normStatus === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
+          <option value="Interview" ${normStatus === 'Interview' ? 'selected' : ''}>Interview</option>
+          <option value="Hired" ${normStatus === 'Hired' ? 'selected' : ''}>Hired</option>
+          <option value="Rejected" ${normStatus === 'Rejected' ? 'selected' : ''}>Rejected</option>
+        </select>
+      </div>
     </div>
-    <p><strong>Email:</strong> ${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #38bdf8;">${escapeHtml(email)}</a>` : 'N/A'}</p>
-    <p><strong>Phone:</strong> ${escapeHtml(phone)}</p>
-    <p><strong>Portfolio / Profile:</strong> ${portfolio ? `<a href="${escapeHtml(portfolio)}" target="_blank" style="color: #38bdf8;">${escapeHtml(portfolio)} ↗</a>` : '<span style="color: #94a3b8;">None provided</span>'}</p>
-    <p style="margin-top: 14px;"><strong>Applicant Cover Note:</strong></p>
-    <div style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-top: 6px; font-style: italic; color: #cbd5e1;">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+      <div><strong>Email:</strong> ${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #38bdf8;">${escapeHtml(email)}</a>` : 'N/A'}</div>
+      <div><strong>Phone:</strong> ${escapeHtml(phone)}</div>
+    </div>
+    <p style="margin-bottom: 14px;"><strong>Portfolio / Profile:</strong> ${portfolio ? `<a href="${escapeHtml(portfolio)}" target="_blank" style="color: #38bdf8;">${escapeHtml(portfolio)} ↗</a>` : '<span style="color: #94a3b8;">None provided</span>'}</p>
+    
+    <p style="margin-top: 14px; margin-bottom: 4px;"><strong>Applicant Cover Note:</strong></p>
+    <div style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-style: italic; color: #cbd5e1; font-size: 0.9rem;">
       "${escapeHtml(note)}"
     </div>
-    <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+
+    <div style="background: rgba(2,6,23,0.6); border: 1px solid rgba(56,189,248,0.2); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <label for="modal-app-notes" style="font-weight: 600; color: #38bdf8; font-size: 0.85rem; margin: 0; display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          Internal Recruiter / Interviewer Notes
+        </label>
+        <button type="button" id="btn-save-app-notes" class="btn-table-action" style="padding: 4px 10px; font-size: 0.75rem; border-color: rgba(56,189,248,0.3); color: #38bdf8;" onclick="window.saveAppNotes('${app.id}')">Save Notes</button>
+      </div>
+      <textarea id="modal-app-notes" rows="3" class="form-input" style="width: 100%; font-size: 0.85rem; padding: 8px; background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #e2e8f0; resize: vertical;" placeholder="Add private feedback, screening notes, interview scores or timeline...">${escapeHtml(internalNotes)}</textarea>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Download / Open Resume Document ↗</a>` : ''}
-      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600;" onclick="window.deleteApplicationPermanently('${app.id}'); window.closeModal('modal-view-app');">Delete Application</button>
+      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600; margin-left: auto;" onclick="window.deleteApplicationPermanently('${app.id}'); window.closeModal('modal-view-app');">Delete Application</button>
     </div>
   `;
   openModal('modal-view-app');
@@ -2071,12 +2212,34 @@ window.viewApplication = (id) => {
 
 function renderIdeasTable() {
   const tbody = document.getElementById('ideas-table-body');
-  if (currentIdeas.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b;">No SaaS ideas submitted yet.</td></tr>';
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('search-ideas-input');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  const filtered = currentIdeas.filter(idea => {
+    if (!query) return true;
+    const concept = (idea.conceptName || '').toLowerCase();
+    const founder = (idea.founderName || '').toLowerCase();
+    const email = (idea.founderEmail || '').toLowerCase();
+    const stage = (idea.stage || '').toLowerCase();
+    const pitch = (idea.elevatorPitch || '').toLowerCase();
+    const type = (idea.productType || '').toLowerCase();
+    return concept.includes(query) || founder.includes(query) || email.includes(query) || stage.includes(query) || pitch.includes(query) || type.includes(query);
+  });
+
+  const countMeta = document.getElementById('ideas-results-count');
+  if (countMeta) {
+    countMeta.textContent = `Showing ${filtered.length} of ${currentIdeas.length}`;
+  }
+
+  if (filtered.length === 0) {
+    const msg = currentIdeas.length === 0 ? 'No SaaS ideas submitted yet.' : 'No pitches match your search criteria.';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">${msg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = currentIdeas.map(idea => `
+  tbody.innerHTML = filtered.map(idea => `
     <tr>
       <td><strong style="color: #ffffff;">${escapeHtml(idea.conceptName)}</strong></td>
       <td>
@@ -2092,6 +2255,13 @@ function renderIdeasTable() {
       </td>
     </tr>
   `).join('');
+}
+
+const searchIdeasInput = document.getElementById('search-ideas-input');
+if (searchIdeasInput) {
+  searchIdeasInput.addEventListener('input', () => {
+    renderIdeasTable();
+  });
 }
 
 window.viewIdea = (id) => {
@@ -2157,30 +2327,141 @@ window.deleteIdea = async (id) => {
 
 function renderContactsTable() {
   const tbody = document.getElementById('contacts-table-body');
-  if (currentContacts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">No contact messages yet.</td></tr>';
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('search-contacts-input');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  const filtered = currentContacts.filter(c => {
+    if (!query) return true;
+    const name = (c.name || '').toLowerCase();
+    const email = (c.email || '').toLowerCase();
+    const subject = (c.subject || '').toLowerCase();
+    const message = (c.message || '').toLowerCase();
+    return name.includes(query) || email.includes(query) || subject.includes(query) || message.includes(query);
+  });
+
+  if (filtered.length === 0) {
+    const msg = currentContacts.length === 0 ? 'No contact messages yet.' : 'No messages match your search criteria.';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 32px 16px;">${msg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = currentContacts.map(c => `
-    <tr>
-      <td><strong style="color: #ffffff;">${escapeHtml(c.name || 'Anonymous')}</strong></td>
-      <td><a href="mailto:${escapeHtml(c.email)}" style="color: #38bdf8; text-decoration: underline;" title="Reply to ${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></td>
-      <td><span style="font-weight: 600; color: #cbd5e1;">${escapeHtml(c.subject || 'General Inquiry')}</span></td>
-      <td style="max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2e8f0;" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</td>
-      <td style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap;">${formatDateTime(c.submittedAt || c.createdAt)}</td>
-      <td style="white-space: nowrap;">
-        <button class="btn-table-action" onclick="window.viewContact('${c.id}')">View</button>
-        <a href="mailto:${encodeURIComponent(c.email)}?subject=Re:%20${encodeURIComponent(c.subject || 'Synerbit Inquiry')}" class="btn-table-action" style="text-decoration: none; display: inline-block;">Reply ✉️</a>
-        <button class="btn-table-action" style="color: #f87171;" onclick="window.deleteContact('${c.id}')" title="Delete">✕</button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = filtered.map(c => {
+    const isRead = !!c.isRead;
+    const statusBadge = isRead
+      ? `<span class="read-badge">Read</span>`
+      : `<span class="unread-badge"><span class="unread-dot"></span> New</span>`;
+    const toggleLabel = isRead ? 'Mark Unread' : 'Mark Read';
+
+    return `
+      <tr>
+        <td>${statusBadge}</td>
+        <td><strong style="color: #ffffff;">${escapeHtml(c.name || 'Anonymous')}</strong></td>
+        <td><a href="mailto:${escapeHtml(c.email)}" style="color: #38bdf8; text-decoration: underline;" title="Reply to ${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></td>
+        <td><span style="font-weight: 600; color: #cbd5e1;">${escapeHtml(c.subject || 'General Inquiry')}</span></td>
+        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2e8f0;" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</td>
+        <td style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap;">${formatDateTime(c.submittedAt || c.createdAt)}</td>
+        <td style="white-space: nowrap;">
+          <button class="btn-table-action" onclick="window.viewContact('${c.id}')">View</button>
+          <button class="btn-table-action" style="color: #94a3b8; font-size: 0.74rem;" onclick="window.toggleContactRead('${c.id}')" title="${toggleLabel}">${toggleLabel}</button>
+          <a href="mailto:${encodeURIComponent(c.email)}?subject=Re:%20${encodeURIComponent(c.subject || 'Synerbit Inquiry')}" class="btn-table-action" style="text-decoration: none; display: inline-block;">Reply ✉️</a>
+          <button class="btn-table-action" style="color: #f87171;" onclick="window.deleteContact('${c.id}')" title="Delete">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
-window.viewContact = (id) => {
+const searchContactsInput = document.getElementById('search-contacts-input');
+if (searchContactsInput) {
+  searchContactsInput.addEventListener('input', () => {
+    renderContactsTable();
+  });
+}
+
+const btnMarkAllContactsRead = document.getElementById('btn-mark-all-contacts-read');
+if (btnMarkAllContactsRead) {
+  btnMarkAllContactsRead.addEventListener('click', async () => {
+    const unread = currentContacts.filter(c => !c.isRead);
+    if (unread.length === 0) return;
+
+    btnMarkAllContactsRead.disabled = true;
+    btnMarkAllContactsRead.textContent = 'Updating...';
+
+    currentContacts.forEach(c => c.isRead = true);
+    setLocal('contacts', currentContacts);
+    updateAllUIPanels();
+
+    if (isFirebaseConfigured()) {
+      try {
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        await Promise.all(unread.map(c => setDoc(doc(db, "contact_messages", c.id), { isRead: true }, { merge: true })));
+      } catch (err) {
+        console.warn("Bulk mark read error:", err);
+      }
+    }
+
+    btnMarkAllContactsRead.textContent = 'All Read ✓';
+    setTimeout(() => {
+      btnMarkAllContactsRead.textContent = 'Mark All Read';
+      btnMarkAllContactsRead.disabled = false;
+    }, 1500);
+  });
+}
+
+window.toggleContactRead = async (id) => {
   const contact = currentContacts.find(c => c.id === id);
   if (!contact) return;
+  contact.isRead = !contact.isRead;
+  setLocal('contacts', currentContacts);
+  updateAllUIPanels();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      await setDoc(doc(db, "contact_messages", id), { isRead: contact.isRead }, { merge: true });
+      try {
+        await setDoc(doc(db, "contacts", id), { isRead: contact.isRead }, { merge: true });
+      } catch (_) {}
+    } catch (err) {
+      console.warn("Could not toggle read status in Firestore:", err);
+    }
+  }
+};
+
+window.viewContact = async (id) => {
+  const contact = currentContacts.find(c => c.id === id);
+  if (!contact) return;
+
+  // Automatically mark as read if not already read
+  if (!contact.isRead) {
+    contact.isRead = true;
+    setLocal('contacts', currentContacts);
+    updateAllUIPanels();
+
+    if (isFirebaseConfigured()) {
+      try {
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        await setDoc(doc(db, "contact_messages", id), { isRead: true }, { merge: true });
+        try {
+          await setDoc(doc(db, "contacts", id), { isRead: true }, { merge: true });
+        } catch (_) {}
+      } catch (err) {
+        console.warn("Could not mark message as read in Firestore:", err);
+      }
+    }
+  }
+
   const body = document.getElementById('view-contact-body');
   if (body) {
     body.innerHTML = `

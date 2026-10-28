@@ -220,7 +220,11 @@
 
           <!-- 2. PRODUCTS MANAGEMENT -->
           <section id="panel-products" class="content-panel">
-            <div class="panel-toolbar">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <div class="panel-search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="search-products-input" placeholder="Search platforms, categories..." />
+              </div>
               <button class="btn-primary-action" id="btn-open-create-product">
                 + Add New Product
               </button>
@@ -246,7 +250,11 @@
 
           <!-- 3. JOB OPENINGS MANAGEMENT -->
           <section id="panel-jobs" class="content-panel">
-            <div class="panel-toolbar">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <div class="panel-search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="search-jobs-input" placeholder="Search roles, department, location..." />
+              </div>
               <button class="btn-primary-action" id="btn-open-create-job">
                 + Post New Role
               </button>
@@ -309,8 +317,10 @@
                   <select id="filter-app-status" class="form-select-sm">
                     <option value="all">All Statuses</option>
                     <option value="New">New</option>
-                    <option value="Reviewing">Reviewing</option>
+                    <option value="Under Review">Under Review</option>
                     <option value="Shortlisted">Shortlisted</option>
+                    <option value="Interview">Interview</option>
+                    <option value="Hired">Hired</option>
                     <option value="Rejected">Rejected</option>
                   </select>
                 </div>
@@ -361,6 +371,14 @@
 
           <!-- 5. SAAS IDEA SUBMISSIONS INBOX -->
           <section id="panel-ideas" class="content-panel">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;">
+              <div class="panel-search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="search-ideas-input" placeholder="Search pitches, founders, stage..." />
+              </div>
+              <div id="ideas-results-count" style="color: #94a3b8; font-size: 0.82rem; font-weight: 600;">0 pitches</div>
+            </div>
+
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -382,16 +400,26 @@
 
           <!-- 6. CONTACT MESSAGES -->
           <section id="panel-contacts" class="content-panel">
-            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
               <div>
                 <h3 style="color: #ffffff; font-size: 1.15rem; font-weight: 700; margin: 0;">Direct Inquiry Messages</h3>
                 <p style="color: #94a3b8; font-size: 0.82rem; margin: 4px 0 0 0;">Messages submitted via the site Contact button.</p>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <div class="panel-search-box">
+                  <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <input type="text" id="search-contacts-input" placeholder="Search sender, email, subject..." />
+                </div>
+                <button type="button" class="btn-table-action" id="btn-mark-all-contacts-read" style="padding: 7px 12px; border-radius: 8px; font-weight: 600;">
+                  Mark All as Read
+                </button>
               </div>
             </div>
             <div class="table-container">
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th style="width: 100px;">Status</th>
                     <th>Sender Name</th>
                     <th>Email Address</th>
                     <th>Subject</th>
