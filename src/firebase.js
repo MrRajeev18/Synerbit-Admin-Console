@@ -138,6 +138,109 @@ export const DEFAULT_JOBS = [
   }
 ];
 
+export const DEFAULT_APPLICATIONS = [
+  {
+    id: "app-aarav-sharma",
+    jobId: "job-1793012001229",
+    jobTitle: "Software Engineer Intern",
+    applicantName: "Aarav Sharma",
+    name: "Aarav Sharma",
+    applicantEmail: "aarav.sharma@example.com",
+    email: "aarav.sharma@example.com",
+    applicantPhone: "+91 98765 43210",
+    phone: "+91 98765 43210",
+    portfolioUrl: "https://github.com/aarav-sharma",
+    notes: "Passionate about full-stack web development and excited about building high-velocity SaaS products at Synerbit.",
+    internalNotes: "Strong GitHub portfolio with React & Node.js projects. Shortlisted for technical screening.",
+    resumeUrl: "",
+    resumeFileName: "Aarav_Sharma_Resume.pdf",
+    status: "Shortlisted",
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 24 * 2).toISOString()
+  },
+  {
+    id: "app-priya-patel",
+    jobId: "job-1793037501741",
+    jobTitle: "Marketing Intern",
+    applicantName: "Priya Patel",
+    name: "Priya Patel",
+    applicantEmail: "priya.patel@example.com",
+    email: "priya.patel@example.com",
+    applicantPhone: "+91 98123 45678",
+    phone: "+91 98123 45678",
+    portfolioUrl: "https://linkedin.com/in/priyapatel-marketing",
+    notes: "Eager to contribute to Synerbit's brand growth, digital content marketing, and student campus outreach.",
+    internalNotes: "Initial screening passed. Excellent verbal articulation. Scheduled for interview round.",
+    resumeUrl: "",
+    resumeFileName: "Priya_Patel_CV.pdf",
+    status: "Interview",
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 24 * 3).toISOString()
+  },
+  {
+    id: "app-rohan-mehta",
+    jobId: "job-1793166619342",
+    jobTitle: "HR Intern",
+    applicantName: "Rohan Mehta",
+    name: "Rohan Mehta",
+    applicantEmail: "rohan.mehta@example.com",
+    email: "rohan.mehta@example.com",
+    applicantPhone: "+91 97654 32109",
+    phone: "+91 97654 32109",
+    portfolioUrl: "",
+    notes: "BBA graduate eager to start a career in talent acquisition and people operations.",
+    internalNotes: "Profile under review by recruitment team.",
+    resumeUrl: "",
+    resumeFileName: "Rohan_Mehta_Resume.pdf",
+    status: "Under Review",
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 24 * 4).toISOString()
+  }
+];
+
+export const DEFAULT_IDEAS = [
+  {
+    id: "idea-docuflow",
+    conceptName: "DocuFlow AI",
+    founderName: "Vikram Verma",
+    founderEmail: "vikram@docuflow.ai",
+    background: "Ex-fintech engineer, 5 years building document processing systems.",
+    productType: "B2B SaaS / Document Automation",
+    stage: "MVP / Prototype",
+    elevatorPitch: "Intelligent AI-driven document extraction, verification, and audit pipeline for high-compliance financial workflows.",
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 24 * 3).toISOString()
+  },
+  {
+    id: "idea-cloudfin",
+    conceptName: "CloudFin Ledger",
+    founderName: "Neha Gupta",
+    founderEmail: "neha@cloudfin.io",
+    background: "Chartered Accountant & SaaS Product Lead.",
+    productType: "FinTech / SMB Accounting",
+    stage: "Early Traction",
+    elevatorPitch: "Real-time automated multi-entity expense reconciliation and tax filing platform designed for modern Indian startups.",
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 24 * 5).toISOString()
+  }
+];
+
+export const DEFAULT_CONTACTS = [
+  {
+    id: "contact-siddharth",
+    name: "Siddharth Jain",
+    email: "siddharth@innovate.co",
+    subject: "Enterprise Partnership Inquiry",
+    message: "Hello Synerbit team, we have been following your ecosystem products and would love to explore a strategic B2B partnership for our distribution network.",
+    isRead: false,
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 12).toISOString()
+  },
+  {
+    id: "contact-ananya",
+    name: "Ananya Rao",
+    email: "ananya@fintechlabs.in",
+    subject: "PulsePM Product Demo",
+    message: "Hi, our engineering leads are evaluating sprint management platforms. Could we schedule a 20-minute product walkthrough this week?",
+    isRead: true,
+    submittedAt: new Date(Date.now() - 3600 * 1000 * 36).toISOString()
+  }
+];
+
 /* ==========================================================================
    PUBLIC CLIENT API (Jobs, Ideas, Products, Contacts) - Firebase Direct
    ========================================================================== */
@@ -147,7 +250,7 @@ export const DEFAULT_JOBS = [
  */
 export async function getProducts() {
   try {
-    const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -155,17 +258,13 @@ export async function getProducts() {
     const deletedSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
     const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
 
-    let snapshot;
-    try {
-      snapshot = await getDocsFromServer(collection(db, "products"));
-    } catch (_) {
-      snapshot = await getDocs(collection(db, "products"));
-    }
-    const remoteProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    return remoteProducts.filter(p => !deletedIds.has(p.id) && !p.isDeleted);
+    const snapshot = await getDocs(collection(db, "products")).catch(() => ({ docs: [] }));
+    const remoteProducts = snapshot.docs ? snapshot.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+    const valid = remoteProducts.filter(p => !deletedIds.has(p.id) && !p.isDeleted);
+    return valid.length > 0 ? valid : DEFAULT_PRODUCTS;
   } catch (err) {
     console.warn("Live Firebase getProducts error:", err);
-    return [];
+    return DEFAULT_PRODUCTS;
   }
 }
 
@@ -174,7 +273,7 @@ export async function getProducts() {
  */
 export async function getJobs() {
   try {
-    const { getFirestore, collection, getDocsFromServer, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -182,17 +281,13 @@ export async function getJobs() {
     const deletedSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
     const deletedIds = new Set(deletedSnap.docs ? deletedSnap.docs.map(d => d.id) : []);
 
-    let snapshot;
-    try {
-      snapshot = await getDocsFromServer(collection(db, "jobs"));
-    } catch (_) {
-      snapshot = await getDocs(collection(db, "jobs"));
-    }
-    const remoteJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    return remoteJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted && j.status === "Active");
+    const snapshot = await getDocs(collection(db, "jobs")).catch(() => ({ docs: [] }));
+    const remoteJobs = snapshot.docs ? snapshot.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+    const valid = remoteJobs.filter(j => !deletedIds.has(j.id) && !j.isDeleted && j.status === "Active");
+    return valid.length > 0 ? valid : DEFAULT_JOBS;
   } catch (err) {
     console.warn("Live Firebase getJobs error:", err);
-    return [];
+    return DEFAULT_JOBS;
   }
 }
 

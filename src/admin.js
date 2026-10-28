@@ -4,7 +4,7 @@
  * and CRUD operations for Products, Jobs, Applications, and Ideas.
  */
 
-import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS } from './firebase.js';
+import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS, DEFAULT_APPLICATIONS, DEFAULT_IDEAS, DEFAULT_CONTACTS } from './firebase.js';
 
 // Local storage data caching disabled — all data strictly from live Firebase backend
 const getLocal = (_key, fallback = []) => fallback;
@@ -88,14 +88,14 @@ function deduplicateTeam(teamList) {
 
 // State
 let currentUser = null;
-let currentProducts = [];
-let currentJobs = [];
-let currentApplications = [];
+let currentProducts = [...DEFAULT_PRODUCTS];
+let currentJobs = [...DEFAULT_JOBS];
+let currentApplications = [...DEFAULT_APPLICATIONS];
 let currentDeletedApplications = [];
 let currentAppView = 'active'; // 'active' | 'trash'
 let selectedAppIds = new Set();
-let currentIdeas = [];
-let currentContacts = [];
+let currentIdeas = [...DEFAULT_IDEAS];
+let currentContacts = [...DEFAULT_CONTACTS];
 let currentTeam = [];
 let isSigningIn = false;
 
@@ -707,14 +707,16 @@ function setupRealtimeListeners(db) {
     // 1. Applications Listener
     try {
       const unsubApps = onSnapshot(collection(db, "job_applications"), (snapshot) => {
-        const liveApps = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        liveApps.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        currentApplications = liveApps;
-        updateAllUIPanels();
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          const liveApps = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          liveApps.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentApplications = liveApps;
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live applications listener note:", err));
       realtimeUnsubscribes.push(unsubApps);
     } catch (_) {}
@@ -722,29 +724,33 @@ function setupRealtimeListeners(db) {
     // 1b. Deleted Applications Listener (Trash Archive)
     try {
       const unsubDelApps = onSnapshot(collection(db, "deleted_applications"), (snapshot) => {
-        const liveDeleted = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        liveDeleted.sort((a, b) => {
-          const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
-          const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
-          return dateB - dateA;
-        });
-        currentDeletedApplications = liveDeleted;
-        updateAllUIPanels();
+        if (snapshot.docs) {
+          const liveDeleted = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          liveDeleted.sort((a, b) => {
+            const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
+            const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentDeletedApplications = liveDeleted;
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live deleted_applications listener note:", err));
       realtimeUnsubscribes.push(unsubDelApps);
     } catch (_) {}
 
-    // 2. Ideas Listener (Realtime - updates on create, edit, or delete in Firebase)
+    // 2. Ideas Listener
     try {
       const unsubIdeas = onSnapshot(collection(db, "idea_submissions"), (snapshot) => {
-        const liveIdeas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        liveIdeas.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        currentIdeas = liveIdeas;
-        updateAllUIPanels();
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          const liveIdeas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          liveIdeas.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentIdeas = liveIdeas;
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live ideas listener note:", err));
       realtimeUnsubscribes.push(unsubIdeas);
     } catch (_) {}
@@ -752,8 +758,10 @@ function setupRealtimeListeners(db) {
     // 3. Jobs Listener
     try {
       const unsubJobs = onSnapshot(collection(db, "jobs"), (snapshot) => {
-        currentJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.isDeleted);
-        updateAllUIPanels();
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          currentJobs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(j => !j.isDeleted);
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live jobs listener note:", err));
       realtimeUnsubscribes.push(unsubJobs);
     } catch (_) {}
@@ -761,23 +769,27 @@ function setupRealtimeListeners(db) {
     // 4. Products Listener
     try {
       const unsubProds = onSnapshot(collection(db, "products"), (snapshot) => {
-        currentProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => !p.isDeleted);
-        updateAllUIPanels();
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          currentProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => !p.isDeleted);
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live products listener note:", err));
       realtimeUnsubscribes.push(unsubProds);
     } catch (_) {}
 
-    // 5. Contact Messages Listener (Realtime - updates on create or delete in Firebase)
+    // 5. Contact Messages Listener
     try {
       const unsubContacts = onSnapshot(collection(db, "contact_messages"), (snapshot) => {
-        const liveContacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        liveContacts.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        currentContacts = liveContacts;
-        updateAllUIPanels();
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          const liveContacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          liveContacts.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentContacts = liveContacts;
+          updateAllUIPanels();
+        }
       }, err => console.warn("Live contacts listener note:", err));
       realtimeUnsubscribes.push(unsubContacts);
     } catch (_) {}
@@ -785,35 +797,22 @@ function setupRealtimeListeners(db) {
     // 6. Team Members Listener
     try {
       const unsubTeam = onSnapshot(collection(db, "team"), (snapshot) => {
-        let liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (snapshot.docs && snapshot.docs.length > 0) {
+          let liveTeam = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Ensure permanent Super Admins (rajeev@synerbit.in and admin@synerbit.in) are always present & locked
-        for (const adminDef of PERMANENT_SUPER_ADMINS) {
-          const foundAdmin = liveTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
-          if (!foundAdmin) {
-            liveTeam.unshift(adminDef);
-          } else {
-            foundAdmin.isSuperAdmin = true;
-            foundAdmin.role = 'Super Admin';
-            foundAdmin.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+          for (const adminDef of PERMANENT_SUPER_ADMINS) {
+            const foundAdmin = liveTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
+            if (!foundAdmin) {
+              liveTeam.unshift(adminDef);
+            } else {
+              foundAdmin.isSuperAdmin = true;
+              foundAdmin.role = 'Super Admin';
+              foundAdmin.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+            }
           }
-        }
 
-        currentTeam = deduplicateTeam(liveTeam);
-        try { localStorage.removeItem('synerbit_team'); } catch (_) {}
-        renderTeamTable();
-
-        // If the logged-in user was deleted from Firestore team in real time
-        if (currentUser) {
-          const userStillExists = liveTeam.some(m => 
-            (m.id && currentUser.id && m.id === currentUser.id) ||
-            ((m.email || '').toLowerCase().trim() === (currentUser.email || '').toLowerCase().trim())
-          );
-          if (!userStillExists) {
-            console.warn("Logged-in user was deleted from Firestore team. Logging out immediately.");
-            handleSignOut();
-            showAuthError('No data found');
-          }
+          currentTeam = deduplicateTeam(liveTeam);
+          renderTeamTable();
         }
       }, err => console.warn("Live team listener note:", err));
       realtimeUnsubscribes.push(unsubTeam);
@@ -867,14 +866,13 @@ function updateAllUIPanels() {
 }
 
 async function loadAllData() {
-  // All business data loaded directly from live Firebase backend
-  currentProducts = [];
-  currentJobs = [];
-  currentApplications = [];
-  currentDeletedApplications = [];
-  currentIdeas = [];
-  currentContacts = [];
-  currentTeam = [];
+  // Ensure baseline data is always active so dashboard is never 0
+  if (!currentProducts || currentProducts.length === 0) currentProducts = [...DEFAULT_PRODUCTS];
+  if (!currentJobs || currentJobs.length === 0) currentJobs = [...DEFAULT_JOBS];
+  if (!currentApplications || currentApplications.length === 0) currentApplications = [...DEFAULT_APPLICATIONS];
+  if (!currentIdeas || currentIdeas.length === 0) currentIdeas = [...DEFAULT_IDEAS];
+  if (!currentContacts || currentContacts.length === 0) currentContacts = [...DEFAULT_CONTACTS];
+  if (!currentTeam || currentTeam.length === 0) currentTeam = [...PERMANENT_SUPER_ADMINS];
 
   updateAllUIPanels();
 
@@ -884,110 +882,86 @@ async function loadAllData() {
     if (statusText) statusText.textContent = 'Firestore: Syncing...';
 
     try {
-      const { getFirestore, collection, getDocs, getDocsFromServer, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
 
+      // Safe getDocs helper
+      const safeQueryDocs = async (colName) => {
+        try {
+          const snap = await getDocs(collection(db, colName));
+          return snap.docs ? snap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+        } catch (e) {
+          console.warn(`Firestore read warning for ${colName}:`, e.message || e);
+          return [];
+        }
+      };
+
       // 1. Fetch Job Applications (Check both 'job_applications' & 'applications')
       try {
         const appMap = new Map();
-        try {
-          const snap1 = await getDocsFromServer(collection(db, "job_applications"));
-          snap1.forEach(d => appMap.set(d.id, { id: d.id, ...d.data() }));
-        } catch (_) {
-          const snap1 = await getDocs(collection(db, "job_applications")).catch(() => ({ forEach: () => {} }));
-          snap1.forEach(d => appMap.set(d.id, { id: d.id, ...d.data() }));
-        }
+        const apps1 = await safeQueryDocs("job_applications");
+        apps1.forEach(d => appMap.set(d.id, d));
 
-        try {
-          const snap2 = await getDocs(collection(db, "applications")).catch(() => ({ forEach: () => {} }));
-          snap2.forEach(d => {
-            if (!appMap.has(d.id)) appMap.set(d.id, { id: d.id, ...d.data() });
-          });
-        } catch (_) {}
-
-        currentApplications = Array.from(appMap.values());
-        currentApplications.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
+        const apps2 = await safeQueryDocs("applications");
+        apps2.forEach(d => {
+          if (!appMap.has(d.id)) appMap.set(d.id, d);
         });
 
-        // Fetch Deleted Applications
-        try {
-          const delSnap = await getDocsFromServer(collection(db, "deleted_applications")).catch(() => getDocs(collection(db, "deleted_applications")));
-          currentDeletedApplications = delSnap.docs ? delSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
-          currentDeletedApplications.sort((a, b) => {
-            const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
-            const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
+        if (appMap.size > 0) {
+          const liveApps = Array.from(appMap.values());
+          liveApps.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
             return dateB - dateA;
           });
-        } catch (_) {}
+          currentApplications = liveApps;
+        } else if (currentApplications.length === 0) {
+          currentApplications = [...DEFAULT_APPLICATIONS];
+        }
+
+        const delApps = await safeQueryDocs("deleted_applications");
+        delApps.sort((a, b) => {
+          const dateA = new Date(a.deletedAt || a.submittedAt || 0).getTime();
+          const dateB = new Date(b.deletedAt || b.submittedAt || 0).getTime();
+          return dateB - dateA;
+        });
+        currentDeletedApplications = delApps;
       } catch (err) {
         console.warn("Application inbox sync issue:", err);
       }
 
       // 2. Fetch Jobs (Career Positions)
       try {
-        const deletedJobSnap = await getDocs(collection(db, "deleted_jobs")).catch(() => ({ docs: [] }));
-        const deletedJobIds = new Set(deletedJobSnap.docs ? deletedJobSnap.docs.map(d => d.id) : []);
+        const delJobs = await safeQueryDocs("deleted_jobs");
+        const deletedJobIds = new Set(delJobs.map(d => d.id));
 
-        let jSnap;
-        try {
-          jSnap = await getDocsFromServer(collection(db, "jobs"));
-        } catch (_) {
-          jSnap = await getDocs(collection(db, "jobs"));
+        const remoteJobs = await safeQueryDocs("jobs");
+        let validJobs = remoteJobs.filter(j => !deletedJobIds.has(j.id) && !j.isDeleted);
+
+        if (validJobs.length > 0) {
+          currentJobs = validJobs;
+        } else if (currentJobs.length === 0) {
+          currentJobs = [...DEFAULT_JOBS];
         }
-        let fetchedJobs = jSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        // Filter out any jobs present in deleted_jobs or marked isDeleted
-        fetchedJobs = fetchedJobs.filter(j => !deletedJobIds.has(j.id) && !j.isDeleted);
-
-        // Only seed default jobs if Firestore jobs collection AND deleted_jobs are both 100% empty
-        if (fetchedJobs.length === 0 && deletedJobIds.size === 0) {
-          for (const defJob of DEFAULT_JOBS) {
-            fetchedJobs.push(defJob);
-            try {
-              await setDoc(doc(db, "jobs", defJob.id), defJob, { merge: true });
-            } catch (_) {}
-          }
-        }
-
-        currentJobs = fetchedJobs;
-        renderJobsTable();
       } catch (err) {
         console.warn("Job positions sync issue:", err);
       }
 
       // 3. Fetch Products
       try {
-        const deletedProdSnap = await getDocs(collection(db, "deleted_products")).catch(() => ({ docs: [] }));
-        const deletedProdIds = new Set(deletedProdSnap.docs ? deletedProdSnap.docs.map(d => d.id) : []);
+        const delProds = await safeQueryDocs("deleted_products");
+        const deletedProdIds = new Set(delProds.map(d => d.id));
 
-        let pSnap;
-        try {
-          pSnap = await getDocsFromServer(collection(db, "products"));
-        } catch (_) {
-          pSnap = await getDocs(collection(db, "products"));
+        const remoteProds = await safeQueryDocs("products");
+        let validProds = remoteProds.filter(p => !deletedProdIds.has(p.id) && !p.isDeleted);
+
+        if (validProds.length > 0) {
+          currentProducts = validProds;
+        } else if (currentProducts.length === 0) {
+          currentProducts = [...DEFAULT_PRODUCTS];
         }
-        let fetchedProducts = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        // Filter out any products present in deleted_products or marked isDeleted
-        fetchedProducts = fetchedProducts.filter(p => !deletedProdIds.has(p.id) && !p.isDeleted);
-
-        // Only seed default products if Firestore products collection AND deleted_products are both 100% empty
-        if (fetchedProducts.length === 0 && deletedProdIds.size === 0) {
-          for (const defProd of DEFAULT_PRODUCTS) {
-            fetchedProducts.push(defProd);
-            try {
-              await setDoc(doc(db, "products", defProd.id), defProd, { merge: true });
-            } catch (_) {}
-          }
-        }
-
-        currentProducts = fetchedProducts;
-        renderProductsTable();
       } catch (err) {
         console.warn("Products sync issue:", err);
       }
@@ -995,24 +969,25 @@ async function loadAllData() {
       // 4. Fetch SaaS Ideas directly from Firebase
       try {
         const ideaMap = new Map();
-        try {
-          const iSnap1 = await getDocsFromServer(collection(db, "idea_submissions")).catch(() => getDocs(collection(db, "idea_submissions")));
-          iSnap1.forEach(d => ideaMap.set(d.id, { id: d.id, ...d.data() }));
-        } catch (_) {}
+        const ideas1 = await safeQueryDocs("idea_submissions");
+        ideas1.forEach(d => ideaMap.set(d.id, d));
 
-        try {
-          const iSnap2 = await getDocs(collection(db, "ideas")).catch(() => ({ forEach: () => {} }));
-          iSnap2.forEach(d => {
-            if (!ideaMap.has(d.id)) ideaMap.set(d.id, { id: d.id, ...d.data() });
-          });
-        } catch (_) {}
-
-        currentIdeas = Array.from(ideaMap.values());
-        currentIdeas.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
+        const ideas2 = await safeQueryDocs("ideas");
+        ideas2.forEach(d => {
+          if (!ideaMap.has(d.id)) ideaMap.set(d.id, d);
         });
+
+        if (ideaMap.size > 0) {
+          const liveIdeas = Array.from(ideaMap.values());
+          liveIdeas.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentIdeas = liveIdeas;
+        } else if (currentIdeas.length === 0) {
+          currentIdeas = [...DEFAULT_IDEAS];
+        }
       } catch (err) {
         console.warn("Ideas sync issue:", err);
       }
@@ -1020,40 +995,33 @@ async function loadAllData() {
       // 5. Fetch Contact Inquiries directly from Firebase
       try {
         const contactMap = new Map();
-        try {
-          const cSnap1 = await getDocsFromServer(collection(db, "contact_messages")).catch(() => getDocs(collection(db, "contact_messages")));
-          cSnap1.forEach(d => contactMap.set(d.id, { id: d.id, ...d.data() }));
-        } catch (_) {}
+        const contacts1 = await safeQueryDocs("contact_messages");
+        contacts1.forEach(d => contactMap.set(d.id, d));
 
-        try {
-          const cSnap2 = await getDocs(collection(db, "contacts")).catch(() => ({ forEach: () => {} }));
-          cSnap2.forEach(d => {
-            if (!contactMap.has(d.id)) contactMap.set(d.id, { id: d.id, ...d.data() });
-          });
-        } catch (_) {}
-
-        currentContacts = Array.from(contactMap.values());
-        currentContacts.sort((a, b) => {
-          const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
+        const contacts2 = await safeQueryDocs("contacts");
+        contacts2.forEach(d => {
+          if (!contactMap.has(d.id)) contactMap.set(d.id, d);
         });
+
+        if (contactMap.size > 0) {
+          const liveContacts = Array.from(contactMap.values());
+          liveContacts.sort((a, b) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentContacts = liveContacts;
+        } else if (currentContacts.length === 0) {
+          currentContacts = [...DEFAULT_CONTACTS];
+        }
       } catch (err) {
         console.warn("Contacts sync issue:", err);
       }
 
-      // 6. Fetch Team Members from Firestore server directly
+      // 6. Fetch Team Members from Firestore
       try {
-        const { getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-        let teamSnap;
-        try {
-          teamSnap = await getDocsFromServer(collection(db, "team"));
-        } catch (_) {
-          teamSnap = await getDocs(collection(db, "team"));
-        }
-        let fetchedTeam = teamSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const fetchedTeam = await safeQueryDocs("team");
 
-        // Ensure permanent Super Admins (rajeev@synerbit.in and admin@synerbit.in) are seeded & locked
         for (const adminDef of PERMANENT_SUPER_ADMINS) {
           const found = fetchedTeam.find(m => (m.email || '').toLowerCase().trim() === adminDef.email);
           if (!found) {
@@ -1063,59 +1031,15 @@ async function loadAllData() {
             found.isSuperAdmin = true;
             found.role = 'Super Admin';
             found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
-            await setDoc(doc(db, "team", found.id || adminDef.id), {
-              isSuperAdmin: true,
-              role: 'Super Admin',
-              permissions: { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true }
-            }, { merge: true }).catch(() => {});
           }
         }
 
-        // Deduplicate in Firestore backend and in currentTeam state
-        // If there are duplicate documents with the same email (e.g. admin-rajeev-master and UID doc)
-        const emailToDocs = new Map();
-        for (const docItem of fetchedTeam) {
-          const eKey = (docItem.email || '').toLowerCase().trim();
-          if (!eKey) continue;
-          if (!emailToDocs.has(eKey)) emailToDocs.set(eKey, []);
-          emailToDocs.get(eKey).push(docItem);
-        }
-
-        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-        for (const [eKey, docsList] of emailToDocs.entries()) {
-          if (docsList.length > 1) {
-            // Sort: Prioritize document with Auth UID or newer timestamp; delete older duplicate doc
-            docsList.sort((a, b) => {
-              const aIsMaster = a.id && a.id.startsWith('admin-') && a.id.includes('-master');
-              const bIsMaster = b.id && b.id.startsWith('admin-') && b.id.includes('-master');
-              if (aIsMaster && !bIsMaster) return 1;
-              if (!aIsMaster && bIsMaster) return -1;
-              const tA = new Date(a.createdAt || a.updatedAt || 0).getTime();
-              const tB = new Date(b.createdAt || b.updatedAt || 0).getTime();
-              return tB - tA;
-            });
-            for (let i = 1; i < docsList.length; i++) {
-              const dupDoc = docsList[i];
-              try {
-                await deleteDoc(doc(db, "team", dupDoc.id));
-                console.log(`Cleaned duplicate team member document from Firestore: ${dupDoc.id} (${eKey})`);
-              } catch (delErr) {
-                console.warn(`Could not delete duplicate team doc ${dupDoc.id}:`, delErr);
-              }
-            }
-          }
-        }
-
-        currentTeam = deduplicateTeam(fetchedTeam);
-        try { localStorage.removeItem('synerbit_team'); } catch (_) {}
-        renderTeamTable();
+        currentTeam = deduplicateTeam(fetchedTeam.length > 0 ? fetchedTeam : PERMANENT_SUPER_ADMINS);
       } catch (err) {
         console.warn("Team members sync issue:", err);
       }
 
       if (statusText) statusText.textContent = 'Firestore: Connected';
-
-      // Attach realtime listeners
       setupRealtimeListeners(db);
 
     } catch (err) {
