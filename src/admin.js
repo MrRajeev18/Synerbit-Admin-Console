@@ -120,6 +120,12 @@ function initAuth() {
 
       authError.style.display = 'none';
 
+      if (!email || !password) {
+        authError.textContent = 'Please enter both your admin email and password.';
+        authError.style.display = 'block';
+        return;
+      }
+
       const btnSubmit = document.getElementById('btn-login-submit');
       if (btnSubmit) {
         btnSubmit.disabled = true;
@@ -127,10 +133,16 @@ function initAuth() {
       }
 
       try {
-        const { getAuth, signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+        const { getAuth, signInWithEmailAndPassword, setPersistence, browserSessionPersistence } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
         const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);
+
+        // Enforce session persistence so closing tab/browser clears the login session
+        try {
+          await setPersistence(auth, browserSessionPersistence);
+        } catch (_) {}
+
         const userCred = await signInWithEmailAndPassword(auth, email, password);
         const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
         if (!authorized) {
@@ -157,7 +169,7 @@ function initAuth() {
     });
   }
 
-  // Check stored session on startup
+  // Check stored session on startup (only valid within same browser tab session)
   const storedSession = sessionStorage.getItem('synerbit_admin_session');
   if (storedSession) {
     try {
@@ -165,16 +177,28 @@ function initAuth() {
       enterAdminApp();
     } catch (e) {
       sessionStorage.removeItem('synerbit_admin_session');
+      currentUser = null;
     }
   }
 
   // Monitor Firebase Auth state change for token renewal and live reconnect
   if (isFirebaseConfigured()) {
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js").then(({ getAuth, onAuthStateChanged }) => {
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js").then(({ getAuth, onAuthStateChanged, signOut }) => {
       import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then(({ initializeApp, getApps }) => {
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);
         onAuthStateChanged(auth, async (fbUser) => {
+          // If the user has NOT logged in via the login form in this session, DO NOT AUTO-LOGIN!
+          if (!currentUser) {
+            if (fbUser) {
+              console.log("Stale background Firebase session detected on login screen. Signing out to enforce explicit password entry.");
+              try {
+                await signOut(auth);
+              } catch (_) {}
+            }
+            return;
+          }
+
           if (fbUser) {
             console.log("Firebase Auth active user confirmed:", fbUser.email);
             // Verify if user account was deleted or disabled in Firebase Auth backend
@@ -241,6 +265,10 @@ async function handleSignOut() {
   adminApp.style.display = 'none';
   authScreen.style.display = 'flex';
   if (loginForm) loginForm.reset();
+  const emailInput = document.getElementById('login-email');
+  const passwordInput = document.getElementById('login-password');
+  if (emailInput) emailInput.value = '';
+  if (passwordInput) passwordInput.value = '';
 }
 
 async function resolveUserPermissions(email, fbUser = null, isManualLogin = false) {
@@ -310,7 +338,9 @@ async function resolveUserPermissions(email, fbUser = null, isManualLogin = fals
   }
 
   if (found) {
-    loginUser(found);
+    if (isManualLogin || currentUser) {
+      loginUser(found);
+    }
     return true;
   } else {
     return false;
