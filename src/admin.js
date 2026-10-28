@@ -104,7 +104,34 @@ const authScreen = document.getElementById('auth-screen');
 const adminApp = document.getElementById('admin-app');
 const loginForm = document.getElementById('admin-login-form');
 const authError = document.getElementById('auth-error-msg');
+const authStatus = document.getElementById('auth-status-msg');
 const logoutBtn = document.getElementById('btn-admin-logout');
+
+function showAuthStatus(message, isSuccess = false) {
+  const statusEl = document.getElementById('auth-status-msg');
+  if (!statusEl) return;
+  statusEl.className = `auth-status-banner ${isSuccess ? 'status-success' : ''}`;
+  statusEl.innerHTML = isSuccess 
+    ? `<span style="font-size: 1.1rem; line-height: 1;">✓</span> <span>${escapeHtml(message)}</span>` 
+    : `<span class="auth-status-spinner"></span> <span>${escapeHtml(message)}</span>`;
+  statusEl.style.display = 'flex';
+  const errEl = document.getElementById('auth-error-msg');
+  if (errEl) errEl.style.display = 'none';
+}
+
+function hideAuthStatus() {
+  const statusEl = document.getElementById('auth-status-msg');
+  if (statusEl) statusEl.style.display = 'none';
+}
+
+function showAuthError(message) {
+  hideAuthStatus();
+  const errEl = document.getElementById('auth-error-msg');
+  if (errEl) {
+    errEl.textContent = message;
+    errEl.style.display = 'block';
+  }
+}
 
 // Sidebar user info
 const userNameEl = document.getElementById('sidebar-user-name');
@@ -178,20 +205,21 @@ function initAuth() {
       const email = document.getElementById('login-email').value.trim();
       const password = document.getElementById('login-password').value.trim();
 
-      authError.style.display = 'none';
+      if (authError) authError.style.display = 'none';
+      hideAuthStatus();
 
       if (!email || !password) {
-        authError.textContent = 'Please enter both your admin email and password.';
-        authError.style.display = 'block';
+        showAuthError('Please enter both your admin email and password.');
         return;
       }
 
       const btnSubmit = document.getElementById('btn-login-submit');
       if (btnSubmit) {
         btnSubmit.disabled = true;
-        btnSubmit.textContent = 'Verifying with Firebase...';
+        btnSubmit.textContent = 'Verifying credentials...';
       }
 
+      showAuthStatus('Checking account credentials in backend...');
       isSigningIn = true;
 
       try {
@@ -205,66 +233,155 @@ function initAuth() {
           await setPersistence(auth, browserSessionPersistence);
         } catch (_) {}
 
-        let userCred;
+        const normEmail = email.toLowerCase().trim();
+
+        // 1. Check if the user exists in Firestore team collection or is permanent Super Admin
+        const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const db = getFirestore(app);
+
+        let teamSnap = null;
+        try {
+          teamSnap = await getDocs(collection(db, "team"));
+        } catch (fsErr) {
+          console.warn("Could not query Firestore team:", fsErr);
+        }
+
+        const teamList = teamSnap ? teamSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+        const preAuthMember = teamList.find(m => (m.email || '').toLowerCase().trim() === normEmail);
+        const isSuper = isSuperAdminEmail(normEmail);
+        const existsInFirestoreBackend = !!preAuthMember || isSuper;
+
+        let userCred = null;
+        let signInError = null;
+
         try {
           userCred = await signInWithEmailAndPassword(auth, email, password);
-        } catch (signInErr) {
-          // If login fails because user is not yet created in Firebase Authentication,
-          // verify if their account exists in Firestore 'team' or is a Super Admin.
-          const isUserNotFound = signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential';
-          if (isUserNotFound) {
-            const normEmail = email.toLowerCase().trim();
-            const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-            const db = getFirestore(app);
-            let teamSnap;
-            try {
-              teamSnap = await getDocs(collection(db, "team"));
-            } catch (fsErr) {
-              console.warn("Could not check Firestore team for pre-authorization:", fsErr);
-            }
-            const preAuth = teamSnap ? teamSnap.docs.map(d => ({ id: d.id, ...d.data() })).find(m => (m.email || '').toLowerCase().trim() === normEmail) : null;
+        } catch (err) {
+          signInError = err;
+        }
 
-            if (preAuth || isSuperAdminEmail(normEmail)) {
-              console.log("Pre-authorized backend member detected without active Firebase Auth user. Auto-provisioning Firebase Auth record...");
+        if (userCred) {
+          // Firebase Auth credentials matched!
+          // Now verify whether account has permissions in the console backend
+          showAuthStatus('Validating module permissions...');
+          const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
+          if (!authorized) {
+            // No email user ID exists in the console backend
+            showAuthError('No data found');
+            await handleSignOut();
+            return;
+          }
+          showAuthStatus('Login successful! Loading dashboard...', true);
+          return;
+        }
+
+        // If signInWithEmailAndPassword failed:
+        if (signInError) {
+          const errCode = signInError.code || '';
+
+          if (errCode === 'auth/wrong-password') {
+            showAuthError('The password is wrong');
+            return;
+          }
+
+          if (errCode === 'auth/user-not-found') {
+            // User does not exist in Firebase Auth
+            if (existsInFirestoreBackend) {
+              // Pre-authorized in Firestore; auto-provision Auth user
+              showAuthStatus('Activating new team account credentials...');
               const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
               try {
                 userCred = await createUserWithEmailAndPassword(auth, email, password);
-                // Link newly provisioned UID to Firestore team doc if different
-                if (preAuth && preAuth.id !== userCred.user.uid) {
+                if (preAuthMember && preAuthMember.id !== userCred.user.uid) {
                   try {
-                    await setDoc(doc(db, "team", userCred.user.uid), { ...preAuth, id: userCred.user.uid, updatedAt: new Date().toISOString() }, { merge: true });
+                    await setDoc(doc(db, "team", userCred.user.uid), { ...preAuthMember, id: userCred.user.uid, updatedAt: new Date().toISOString() }, { merge: true });
                   } catch (_) {}
                 }
+                showAuthStatus('Login successful! Loading dashboard...', true);
+                await resolveUserPermissions(userCred.user.email, userCred.user, true);
+                return;
               } catch (createErr) {
                 if (createErr.code === 'auth/email-already-in-use') {
-                  throw new Error('Invalid email or password. Please check your credentials.');
+                  showAuthError('The password is wrong');
+                  return;
                 }
                 throw createErr;
               }
             } else {
-              throw signInErr;
+              showAuthError('No data found');
+              return;
             }
-          } else {
-            throw signInErr;
           }
-        }
 
-        const authorized = await resolveUserPermissions(userCred.user.email, userCred.user, true);
-        if (!authorized) {
-          authError.textContent = `Access Denied: Account (${email}) is not registered in the Firebase backend. Please contact the Super Admin.`;
-          authError.style.display = 'block';
-          await handleSignOut();
+          if (errCode === 'auth/invalid-credential') {
+            // Check if user exists in Firestore backend
+            if (existsInFirestoreBackend) {
+              // Try auto-provisioning in case it's a first-time pre-authorized user
+              try {
+                const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+                userCred = await createUserWithEmailAndPassword(auth, email, password);
+                if (preAuthMember && preAuthMember.id !== userCred.user.uid) {
+                  try {
+                    await setDoc(doc(db, "team", userCred.user.uid), { ...preAuthMember, id: userCred.user.uid, updatedAt: new Date().toISOString() }, { merge: true });
+                  } catch (_) {}
+                }
+                showAuthStatus('Login successful! Loading dashboard...', true);
+                await resolveUserPermissions(userCred.user.email, userCred.user, true);
+                return;
+              } catch (createErr) {
+                // If email already in use, password was wrong
+                showAuthError('The password is wrong');
+                return;
+              }
+            } else {
+              // Not in Firestore backend. Probe Firebase Auth to see if email exists in Auth at all
+              let existsInAuth = false;
+              try {
+                const { initializeApp: initProbeApp, deleteApp: delProbeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+                const { getAuth: getProbeAuth, createUserWithEmailAndPassword: createProbeUser } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+                const pAppName = `probe-${Date.now()}`;
+                const pApp = initProbeApp(firebaseConfig, pAppName);
+                const pAuth = getProbeAuth(pApp);
+                try {
+                  const probeCred = await createProbeUser(pAuth, email, "ProbeCheckPassword123!");
+                  try { await probeCred.user.delete(); } catch (_) {}
+                  existsInAuth = false;
+                } catch (pErr) {
+                  if (pErr.code === 'auth/email-already-in-use') {
+                    existsInAuth = true;
+                  }
+                } finally {
+                  await delProbeApp(pApp);
+                }
+              } catch (_) {}
+
+              if (!existsInAuth) {
+                showAuthError('No data found');
+                return;
+              } else {
+                // User is in Firebase Auth but has no entry in the console backend
+                showAuthError('No data found');
+                return;
+              }
+            }
+          }
+
+          if (errCode === 'auth/too-many-requests') {
+            showAuthError('Too many failed attempts. Please try again later.');
+            return;
+          }
+
+          if (errCode === 'auth/network-request-failed') {
+            showAuthError('Network error connecting to Firebase. Check internet connection.');
+            return;
+          }
+
+          // Fallback
+          showAuthError(signInError.message || 'The password is wrong');
         }
       } catch (err) {
         console.error('Firebase Auth error:', err);
-        let friendlyMsg = err.message || 'Firebase login failed';
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-          friendlyMsg = 'Invalid email or password. Please check your credentials.';
-        } else if (err.code === 'auth/network-request-failed') {
-          friendlyMsg = 'Network error connecting to Firebase. Check internet connection.';
-        }
-        authError.textContent = friendlyMsg;
-        authError.style.display = 'block';
+        showAuthError(err.message || 'Firebase login failed');
       } finally {
         isSigningIn = false;
         if (btnSubmit) {
@@ -309,10 +426,7 @@ function initAuth() {
               if (err.code === 'auth/user-not-found' || err.code === 'auth/user-disabled') {
                 console.warn("User account deleted or disabled in Firebase Auth backend:", err);
                 await handleSignOut();
-                if (authError) {
-                  authError.textContent = 'This account has been deleted from the Firebase backend.';
-                  authError.style.display = 'block';
-                }
+                showAuthError('No data found');
                 return;
               }
             }
@@ -322,10 +436,7 @@ function initAuth() {
             if (!isAuthorized) {
               console.warn("User has no profile in Firestore team. Signing out.");
               await handleSignOut();
-              if (authError) {
-                authError.textContent = `No authorized account found for ${fbUser.email}. Contact the Super Admin.`;
-                authError.style.display = 'block';
-              }
+              showAuthError('No data found');
             } else if (adminApp.style.display !== 'none') {
               loadAllData();
             }
@@ -345,6 +456,7 @@ function initAuth() {
 async function handleSignOut() {
   sessionStorage.removeItem('synerbit_admin_session');
   currentUser = null;
+  hideAuthStatus();
 
   realtimeUnsubscribes.forEach(unsub => {
     try { if (typeof unsub === 'function') unsub(); } catch (_) {}
@@ -700,10 +812,7 @@ function setupRealtimeListeners(db) {
           if (!userStillExists) {
             console.warn("Logged-in user was deleted from Firestore team. Logging out immediately.");
             handleSignOut();
-            if (authError) {
-              authError.textContent = 'Your account has been deleted from the backend.';
-              authError.style.display = 'block';
-            }
+            showAuthError('No data found');
           }
         }
       }, err => console.warn("Live team listener note:", err));
