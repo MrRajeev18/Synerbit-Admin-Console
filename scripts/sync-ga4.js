@@ -84,7 +84,9 @@ function getMockAnalytics() {
 // 3. Fetch Real Analytics from GA4 Data API
 async function fetchGA4Analytics(propertyId) {
   const { BetaAnalyticsDataClient } = require('@google-analytics/data');
-  const analyticsDataClient = new BetaAnalyticsDataClient();
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
+  const clientOptions = fs.existsSync(credPath) ? { keyFilename: credPath } : {};
+  const analyticsDataClient = new BetaAnalyticsDataClient(clientOptions);
 
   console.log(`[GA4] Querying Google Analytics Property: properties/${propertyId}...`);
 
@@ -161,13 +163,17 @@ async function main() {
     console.log("[Mode] Generating mock telemetry data (--mock enabled)...");
     data = getMockAnalytics();
   } else {
-    const propertyId = process.env.GA4_PROPERTY_ID || process.argv[2];
-    if (!propertyId) {
-      console.error("\n❌ Error: GA4_PROPERTY_ID is required!");
-      console.error("Usage: export GA4_PROPERTY_ID=\"123456789\" && node sync-ga4.js");
-      console.error("Or run with mock data to test: node sync-ga4.js --mock\n");
+    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
+    if (!fs.existsSync(credPath) && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.error(`\n❌ Error: Google Cloud Service Account key not found!`);
+      console.error(`Please save your service account JSON file as:\n  ${path.join(__dirname, 'service-account.json')}`);
+      console.error(`\nOr test immediately with mock data: node sync-ga4.js --mock\n`);
       process.exit(1);
     }
+
+    const DEFAULT_PROPERTY_ID = "558623130";
+    const explicitProp = process.argv.slice(2).find(arg => !arg.startsWith('--'));
+    const propertyId = process.env.GA4_PROPERTY_ID || explicitProp || DEFAULT_PROPERTY_ID;
     data = await fetchGA4Analytics(propertyId);
   }
 
