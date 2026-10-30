@@ -1523,8 +1523,10 @@ function getFilteredApplications() {
     if (dateFilter !== 'all') {
       const rawDate = currentAppView === 'active' ? (app.submittedAt || app.createdAt) : (app.deletedAt || app.submittedAt || app.createdAt);
       if (!rawDate) return false;
-      const appTime = new Date(rawDate).getTime();
+      const appDate = typeof rawDate?.toDate === 'function' ? rawDate.toDate() : new Date(rawDate);
+      const appTime = appDate.getTime();
       if (isNaN(appTime)) return false;
+
       const now = Date.now();
       if (dateFilter === 'today') {
         const todayStart = new Date();
@@ -1536,6 +1538,16 @@ function getFilteredApplications() {
         if (now - appTime > 30 * 24 * 60 * 60 * 1000) return false;
       } else if (dateFilter === '90d') {
         if (now - appTime > 90 * 24 * 60 * 60 * 1000) return false;
+      } else if (dateFilter === 'custom') {
+        const customDateInput = document.getElementById('filter-app-custom-date');
+        const targetDateStr = (customDateInput?.value || '').trim();
+        if (targetDateStr) {
+          const appYear = appDate.getFullYear();
+          const appMonth = String(appDate.getMonth() + 1).padStart(2, '0');
+          const appDay = String(appDate.getDate()).padStart(2, '0');
+          const appDateStr = `${appYear}-${appMonth}-${appDay}`;
+          if (appDateStr !== targetDateStr) return false;
+        }
       }
     }
 
@@ -1812,8 +1824,47 @@ if (searchAppInput) {
 }
 
 const filterAppDateSelect = document.getElementById('filter-app-date');
+const filterAppCustomDate = document.getElementById('filter-app-custom-date');
+
 if (filterAppDateSelect) {
   filterAppDateSelect.addEventListener('change', () => {
+    selectedAppIds.clear();
+    if (filterAppDateSelect.value === 'custom') {
+      if (filterAppCustomDate) {
+        filterAppCustomDate.style.display = 'inline-block';
+        if (!filterAppCustomDate.value) {
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, '0');
+          const d = String(now.getDate()).padStart(2, '0');
+          filterAppCustomDate.value = `${y}-${m}-${d}`;
+        }
+        try {
+          if (typeof filterAppCustomDate.showPicker === 'function') {
+            filterAppCustomDate.showPicker();
+          } else {
+            filterAppCustomDate.focus();
+          }
+        } catch (_) {
+          filterAppCustomDate.focus();
+        }
+      }
+    } else {
+      if (filterAppCustomDate) {
+        filterAppCustomDate.style.display = 'none';
+        filterAppCustomDate.value = '';
+      }
+    }
+    renderApplicationsTable();
+  });
+}
+
+if (filterAppCustomDate) {
+  filterAppCustomDate.addEventListener('change', () => {
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+  filterAppCustomDate.addEventListener('input', () => {
     selectedAppIds.clear();
     renderApplicationsTable();
   });
@@ -1826,6 +1877,10 @@ if (btnResetAppFilters) {
     if (filterAppRoleSelect) filterAppRoleSelect.value = 'all';
     if (filterAppStatusSelect) filterAppStatusSelect.value = 'all';
     if (filterAppDateSelect) filterAppDateSelect.value = 'all';
+    if (filterAppCustomDate) {
+      filterAppCustomDate.style.display = 'none';
+      filterAppCustomDate.value = '';
+    }
     selectedAppIds.clear();
     renderApplicationsTable();
   });
@@ -1988,11 +2043,16 @@ if (exportOptFiltered) {
     const roleVal = document.getElementById('filter-app-role')?.value || 'all';
     const statusVal = document.getElementById('filter-app-status')?.value || 'all';
     const dateVal = document.getElementById('filter-app-date')?.value || 'all';
+    const customDateVal = (document.getElementById('filter-app-custom-date')?.value || '').trim();
 
     let prefixParts = ['Synerbit_Applications'];
     if (roleVal !== 'all') prefixParts.push(roleVal);
     if (statusVal !== 'all') prefixParts.push(statusVal);
-    if (dateVal !== 'all') prefixParts.push(dateVal);
+    if (dateVal === 'custom' && customDateVal) {
+      prefixParts.push(customDateVal);
+    } else if (dateVal !== 'all') {
+      prefixParts.push(dateVal);
+    }
     if (prefixParts.length === 1) prefixParts.push('Filtered');
 
     exportApplicationsToExcel(displayed, prefixParts.join('_'));

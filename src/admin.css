@@ -1390,6 +1390,40 @@ select option {
   padding: 6px 10px;
 }
 
+.form-date-input-sm {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  height: 28px;
+  transition: all 0.18s ease;
+}
+
+.form-date-input-sm:hover {
+  border-color: #94a3b8;
+}
+
+.form-date-input-sm:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.12);
+}
+
+.form-date-input-sm::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.18s ease;
+}
+
+.form-date-input-sm::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 .btn-reset-filters {
   background: #f8fafc;
   border: 1px solid #cbd5e1;
