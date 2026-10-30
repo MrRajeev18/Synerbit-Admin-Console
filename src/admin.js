@@ -1539,14 +1539,12 @@ function getFilteredApplications() {
       } else if (dateFilter === '90d') {
         if (now - appTime > 90 * 24 * 60 * 60 * 1000) return false;
       } else if (dateFilter === 'custom') {
-        const customDateInput = document.getElementById('filter-app-custom-date');
-        const targetDateStr = (customDateInput?.value || '').trim();
-        if (targetDateStr) {
+        if (selectedCustomDate) {
           const appYear = appDate.getFullYear();
           const appMonth = String(appDate.getMonth() + 1).padStart(2, '0');
           const appDay = String(appDate.getDate()).padStart(2, '0');
           const appDateStr = `${appYear}-${appMonth}-${appDay}`;
-          if (appDateStr !== targetDateStr) return false;
+          if (appDateStr !== selectedCustomDate) return false;
         }
       }
     }
@@ -1823,49 +1821,214 @@ if (searchAppInput) {
   });
 }
 
-const filterAppDateSelect = document.getElementById('filter-app-date');
-const filterAppCustomDate = document.getElementById('filter-app-custom-date');
+// =========================================
+// INTERACTIVE CALENDAR DATE PICKER ENGINE
+// =========================================
+let selectedCustomDate = null;
+let calViewingYear = new Date().getFullYear();
+let calViewingMonth = new Date().getMonth();
 
+const CAL_MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function initCalendarSelectors() {
+  const monthSelect = document.getElementById('cal-month-select');
+  const yearSelect = document.getElementById('cal-year-select');
+  if (!monthSelect || !yearSelect) return;
+
+  if (monthSelect.children.length === 0) {
+    monthSelect.innerHTML = CAL_MONTH_NAMES_SHORT.map((m, idx) => `<option value="${idx}">${m}</option>`).join('');
+  }
+
+  if (yearSelect.children.length === 0) {
+    const curYear = new Date().getFullYear();
+    const years = [];
+    for (let y = curYear - 4; y <= curYear + 2; y++) {
+      years.push(y);
+    }
+    yearSelect.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  }
+}
+
+function renderCalendarPopover() {
+  initCalendarSelectors();
+
+  const monthSelect = document.getElementById('cal-month-select');
+  const yearSelect = document.getElementById('cal-year-select');
+  const daysGrid = document.getElementById('cal-days-grid');
+  if (!monthSelect || !yearSelect || !daysGrid) return;
+
+  monthSelect.value = calViewingMonth;
+  yearSelect.value = calViewingYear;
+
+  const firstDayIndex = new Date(calViewingYear, calViewingMonth, 1).getDay();
+  const daysInCurrentMonth = new Date(calViewingYear, calViewingMonth + 1, 0).getDate();
+  const daysInPrevMonth = new Date(calViewingYear, calViewingMonth, 0).getDate();
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  let html = '';
+
+  // Trailing days from previous month
+  for (let i = firstDayIndex - 1; i >= 0; i--) {
+    const d = daysInPrevMonth - i;
+    html += `<div class="cal-day-cell other-month">${d}</div>`;
+  }
+
+  // Days in current month
+  for (let day = 1; day <= daysInCurrentMonth; day++) {
+    const dateStr = `${calViewingYear}-${String(calViewingMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const isToday = dateStr === todayStr;
+    const isSelected = dateStr === selectedCustomDate;
+
+    let classes = ['cal-day-cell'];
+    if (isToday) classes.push('is-today');
+    if (isSelected) classes.push('selected');
+
+    html += `<div class="${classes.join(' ')}" data-date="${dateStr}">${day}</div>`;
+  }
+
+  // Next month leading days
+  const totalSlots = (firstDayIndex + daysInCurrentMonth) > 35 ? 42 : 35;
+  const remaining = totalSlots - (firstDayIndex + daysInCurrentMonth);
+  for (let nextDay = 1; nextDay <= remaining; nextDay++) {
+    html += `<div class="cal-day-cell other-month">${nextDay}</div>`;
+  }
+
+  daysGrid.innerHTML = html;
+}
+
+function setCustomCalendarDate(dateStr) {
+  selectedCustomDate = dateStr;
+  const triggerLabel = document.getElementById('calendar-trigger-label');
+  const triggerBtn = document.getElementById('btn-calendar-trigger');
+  const popover = document.getElementById('calendar-popover');
+
+  if (dateStr) {
+    const [y, m, d] = dateStr.split('-');
+    const mName = CAL_MONTH_NAMES_SHORT[parseInt(m, 10) - 1] || m;
+    if (triggerLabel) triggerLabel.textContent = `${mName} ${parseInt(d, 10)}, ${y}`;
+    if (triggerBtn) triggerBtn.classList.add('has-date');
+  } else {
+    if (triggerLabel) triggerLabel.textContent = 'Select Date';
+    if (triggerBtn) triggerBtn.classList.remove('has-date');
+  }
+
+  if (popover) popover.style.display = 'none';
+  selectedAppIds.clear();
+  renderApplicationsTable();
+}
+
+// Calendar Navigation & Actions
+const calMonthSelect = document.getElementById('cal-month-select');
+if (calMonthSelect) {
+  calMonthSelect.addEventListener('change', () => {
+    calViewingMonth = parseInt(calMonthSelect.value, 10);
+    renderCalendarPopover();
+  });
+}
+
+const calYearSelect = document.getElementById('cal-year-select');
+if (calYearSelect) {
+  calYearSelect.addEventListener('change', () => {
+    calViewingYear = parseInt(calYearSelect.value, 10);
+    renderCalendarPopover();
+  });
+}
+
+const calPrevMonth = document.getElementById('cal-prev-month');
+if (calPrevMonth) {
+  calPrevMonth.addEventListener('click', () => {
+    calViewingMonth--;
+    if (calViewingMonth < 0) {
+      calViewingMonth = 11;
+      calViewingYear--;
+    }
+    renderCalendarPopover();
+  });
+}
+
+const calNextMonth = document.getElementById('cal-next-month');
+if (calNextMonth) {
+  calNextMonth.addEventListener('click', () => {
+    calViewingMonth++;
+    if (calViewingMonth > 11) {
+      calViewingMonth = 0;
+      calViewingYear++;
+    }
+    renderCalendarPopover();
+  });
+}
+
+const calDaysGrid = document.getElementById('cal-days-grid');
+if (calDaysGrid) {
+  calDaysGrid.addEventListener('click', (e) => {
+    const cell = e.target.closest('.cal-day-cell[data-date]');
+    if (cell && cell.dataset.date) {
+      setCustomCalendarDate(cell.dataset.date);
+    }
+  });
+}
+
+const calBtnToday = document.getElementById('cal-btn-today');
+if (calBtnToday) {
+  calBtnToday.addEventListener('click', () => {
+    const now = new Date();
+    calViewingYear = now.getFullYear();
+    calViewingMonth = now.getMonth();
+    const todayStr = `${calViewingYear}-${String(calViewingMonth + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    setCustomCalendarDate(todayStr);
+  });
+}
+
+const calBtnClear = document.getElementById('cal-btn-clear');
+if (calBtnClear) {
+  calBtnClear.addEventListener('click', () => {
+    setCustomCalendarDate(null);
+  });
+}
+
+// Trigger Button Toggle
+const btnCalendarTrigger = document.getElementById('btn-calendar-trigger');
+const calendarPopover = document.getElementById('calendar-popover');
+const calendarPickerWrapper = document.getElementById('calendar-picker-wrapper');
+
+if (btnCalendarTrigger && calendarPopover) {
+  btnCalendarTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isShowing = calendarPopover.style.display === 'block';
+    calendarPopover.style.display = isShowing ? 'none' : 'block';
+    if (!isShowing) renderCalendarPopover();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (calendarPickerWrapper && !calendarPickerWrapper.contains(e.target)) {
+      calendarPopover.style.display = 'none';
+    }
+  });
+}
+
+// Date Dropdown Handler
+const filterAppDateSelect = document.getElementById('filter-app-date');
 if (filterAppDateSelect) {
   filterAppDateSelect.addEventListener('change', () => {
     selectedAppIds.clear();
     if (filterAppDateSelect.value === 'custom') {
-      if (filterAppCustomDate) {
-        filterAppCustomDate.style.display = 'inline-block';
-        if (!filterAppCustomDate.value) {
-          const now = new Date();
-          const y = now.getFullYear();
-          const m = String(now.getMonth() + 1).padStart(2, '0');
-          const d = String(now.getDate()).padStart(2, '0');
-          filterAppCustomDate.value = `${y}-${m}-${d}`;
-        }
-        try {
-          if (typeof filterAppCustomDate.showPicker === 'function') {
-            filterAppCustomDate.showPicker();
-          } else {
-            filterAppCustomDate.focus();
-          }
-        } catch (_) {
-          filterAppCustomDate.focus();
+      if (calendarPickerWrapper) {
+        calendarPickerWrapper.style.display = 'inline-flex';
+        if (calendarPopover) {
+          calendarPopover.style.display = 'block';
+          renderCalendarPopover();
         }
       }
     } else {
-      if (filterAppCustomDate) {
-        filterAppCustomDate.style.display = 'none';
-        filterAppCustomDate.value = '';
-      }
+      if (calendarPickerWrapper) calendarPickerWrapper.style.display = 'none';
+      if (calendarPopover) calendarPopover.style.display = 'none';
+      selectedCustomDate = null;
+      const triggerLabel = document.getElementById('calendar-trigger-label');
+      if (triggerLabel) triggerLabel.textContent = 'Select Date';
+      if (btnCalendarTrigger) btnCalendarTrigger.classList.remove('has-date');
     }
-    renderApplicationsTable();
-  });
-}
-
-if (filterAppCustomDate) {
-  filterAppCustomDate.addEventListener('change', () => {
-    selectedAppIds.clear();
-    renderApplicationsTable();
-  });
-  filterAppCustomDate.addEventListener('input', () => {
-    selectedAppIds.clear();
     renderApplicationsTable();
   });
 }
@@ -1877,10 +2040,12 @@ if (btnResetAppFilters) {
     if (filterAppRoleSelect) filterAppRoleSelect.value = 'all';
     if (filterAppStatusSelect) filterAppStatusSelect.value = 'all';
     if (filterAppDateSelect) filterAppDateSelect.value = 'all';
-    if (filterAppCustomDate) {
-      filterAppCustomDate.style.display = 'none';
-      filterAppCustomDate.value = '';
-    }
+    if (calendarPickerWrapper) calendarPickerWrapper.style.display = 'none';
+    if (calendarPopover) calendarPopover.style.display = 'none';
+    selectedCustomDate = null;
+    const triggerLabel = document.getElementById('calendar-trigger-label');
+    if (triggerLabel) triggerLabel.textContent = 'Select Date';
+    if (btnCalendarTrigger) btnCalendarTrigger.classList.remove('has-date');
     selectedAppIds.clear();
     renderApplicationsTable();
   });
@@ -2043,13 +2208,12 @@ if (exportOptFiltered) {
     const roleVal = document.getElementById('filter-app-role')?.value || 'all';
     const statusVal = document.getElementById('filter-app-status')?.value || 'all';
     const dateVal = document.getElementById('filter-app-date')?.value || 'all';
-    const customDateVal = (document.getElementById('filter-app-custom-date')?.value || '').trim();
 
     let prefixParts = ['Synerbit_Applications'];
     if (roleVal !== 'all') prefixParts.push(roleVal);
     if (statusVal !== 'all') prefixParts.push(statusVal);
-    if (dateVal === 'custom' && customDateVal) {
-      prefixParts.push(customDateVal);
+    if (dateVal === 'custom' && selectedCustomDate) {
+      prefixParts.push(selectedCustomDate);
     } else if (dateVal !== 'all') {
       prefixParts.push(dateVal);
     }

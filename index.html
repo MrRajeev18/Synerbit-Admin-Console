@@ -336,7 +336,41 @@
                     <option value="90d">Last 90 Days</option>
                     <option value="custom">Specific Date 📅</option>
                   </select>
-                  <input type="date" id="filter-app-custom-date" class="form-date-input-sm" style="display: none;" title="Pick a particular date from calendar" />
+
+                  <!-- Dedicated Interactive Calendar Picker Popover -->
+                  <div class="calendar-picker-wrapper" id="calendar-picker-wrapper" style="display: none;">
+                    <button type="button" class="btn-calendar-trigger" id="btn-calendar-trigger" title="Choose specific date">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                      </svg>
+                      <span id="calendar-trigger-label">Select Date</span>
+                    </button>
+
+                    <div class="calendar-popover" id="calendar-popover" style="display: none;">
+                      <div class="cal-header">
+                        <button type="button" class="cal-nav-btn" id="cal-prev-month" title="Previous Month">&lsaquo;</button>
+                        <div class="cal-title-selects">
+                          <select id="cal-month-select" class="cal-select" title="Choose Month"></select>
+                          <select id="cal-year-select" class="cal-select" title="Choose Year"></select>
+                        </div>
+                        <button type="button" class="cal-nav-btn" id="cal-next-month" title="Next Month">&rsaquo;</button>
+                      </div>
+
+                      <div class="cal-weekdays">
+                        <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                      </div>
+
+                      <div class="cal-days-grid" id="cal-days-grid"></div>
+
+                      <div class="cal-footer">
+                        <button type="button" class="cal-btn-today" id="cal-btn-today">Today</button>
+                        <button type="button" class="cal-btn-clear" id="cal-btn-clear">Clear</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Reset Filters Button -->
