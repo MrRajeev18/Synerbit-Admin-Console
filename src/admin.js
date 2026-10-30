@@ -896,7 +896,7 @@ async function loadAllData() {
     if (statusText) statusText.textContent = 'Firestore: Syncing...';
 
     try {
-      const { getFirestore, collection, getDocs, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { getFirestore, collection, getDocs, getDoc, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
       const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
       const db = getFirestore(app);
@@ -1055,7 +1055,6 @@ async function loadAllData() {
 
       // 7. Fetch Site Analytics (GA4) Overview
       try {
-        const { getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const analyticsSnap = await getDoc(doc(db, "site_analytics", "overview"));
         if (analyticsSnap && analyticsSnap.exists()) {
           renderSiteAnalytics(analyticsSnap.data());
