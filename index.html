@@ -325,14 +325,64 @@
                   </select>
                 </div>
 
+                <!-- Date Filter -->
+                <div class="filter-field" id="date-filter-wrapper">
+                  <label class="filter-label" for="filter-app-date">Date:</label>
+                  <select id="filter-app-date" class="form-select-sm">
+                    <option value="all">All Dates</option>
+                    <option value="today">Today</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                    <option value="90d">Last 90 Days</option>
+                  </select>
+                </div>
+
                 <!-- Reset Filters Button -->
                 <button type="button" class="btn-reset-filters" id="btn-reset-app-filters" title="Reset all filters">
                   Clear
                 </button>
               </div>
 
-              <div class="app-results-meta">
-                <span id="app-results-count">0 results</span>
+              <div class="app-toolbar-right" style="display: flex; gap: 14px; align-items: center; margin-left: auto;">
+                <div class="app-results-meta">
+                  <span id="app-results-count">0 results</span>
+                </div>
+
+                <!-- Export to Excel Dropdown -->
+                <div class="export-dropdown-wrapper" style="position: relative;">
+                  <button type="button" class="btn-export-excel" id="btn-export-apps-excel" title="Download Applications as Excel Spreadsheet">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Export Excel</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  <div class="export-dropdown-menu" id="export-apps-menu" style="display: none;">
+                    <button type="button" class="export-menu-item" id="export-opt-filtered">
+                      <div class="export-item-title">
+                        <span>Filtered Applications</span>
+                        <span class="export-badge" id="export-filtered-count-badge">0</span>
+                      </div>
+                      <div class="export-item-desc">Exports current view based on active search, role, status &amp; date</div>
+                    </button>
+                    <button type="button" class="export-menu-item" id="export-opt-all">
+                      <div class="export-item-title">
+                        <span>All Applications</span>
+                        <span class="export-badge" id="export-all-count-badge">0</span>
+                      </div>
+                      <div class="export-item-desc">Exports complete talent database</div>
+                    </button>
+                    <button type="button" class="export-menu-item" id="export-opt-selected">
+                      <div class="export-item-title">
+                        <span>Selected Candidates</span>
+                        <span class="export-badge" id="export-selected-count-badge">0</span>
+                      </div>
+                      <div class="export-item-desc">Exports only rows ticked with checkboxes</div>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

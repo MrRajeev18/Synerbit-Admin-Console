@@ -1502,6 +1502,7 @@ function getFilteredApplications() {
   const sourceList = currentAppView === 'active' ? currentApplications : currentDeletedApplications;
   const roleFilter = (document.getElementById('filter-app-role')?.value || 'all').toLowerCase().trim();
   const statusFilter = (document.getElementById('filter-app-status')?.value || 'all').trim();
+  const dateFilter = (document.getElementById('filter-app-date')?.value || 'all').trim();
   const searchQuery = (document.getElementById('search-app-input')?.value || '').toLowerCase().trim();
 
   return sourceList.filter(app => {
@@ -1518,7 +1519,27 @@ function getFilteredApplications() {
       if (normStatus.toLowerCase() !== statusFilter.toLowerCase()) return false;
     }
 
-    // 3. Search Query Filter (Applicant name, email, phone, role, notes, internal recruiter notes)
+    // 3. Submission Date Filter
+    if (dateFilter !== 'all') {
+      const rawDate = currentAppView === 'active' ? (app.submittedAt || app.createdAt) : (app.deletedAt || app.submittedAt || app.createdAt);
+      if (!rawDate) return false;
+      const appTime = new Date(rawDate).getTime();
+      if (isNaN(appTime)) return false;
+      const now = Date.now();
+      if (dateFilter === 'today') {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (appTime < todayStart.getTime()) return false;
+      } else if (dateFilter === '7d') {
+        if (now - appTime > 7 * 24 * 60 * 60 * 1000) return false;
+      } else if (dateFilter === '30d') {
+        if (now - appTime > 30 * 24 * 60 * 60 * 1000) return false;
+      } else if (dateFilter === '90d') {
+        if (now - appTime > 90 * 24 * 60 * 60 * 1000) return false;
+      }
+    }
+
+    // 4. Search Query Filter (Applicant name, email, phone, role, notes, internal recruiter notes)
     if (searchQuery) {
       const name = (app.applicantName || app.name || app.fullName || '').toLowerCase();
       const email = (app.applicantEmail || app.email || '').toLowerCase();
@@ -1539,13 +1560,25 @@ function renderApplicationsTable() {
   if (!tbody) return;
 
   const displayedApps = getFilteredApplications();
+  const allSource = currentAppView === 'active' ? currentApplications : currentDeletedApplications;
 
   // Update Result Count Meta
   const resultsMeta = document.getElementById('app-results-count');
   if (resultsMeta) {
-    const totalCount = currentAppView === 'active' ? currentApplications.length : currentDeletedApplications.length;
+    const totalCount = allSource.length;
     resultsMeta.textContent = `Showing ${displayedApps.length} of ${totalCount}`;
   }
+
+  // Update Export Dropdown Badges
+  const badgeFiltered = document.getElementById('export-filtered-count-badge');
+  const badgeAll = document.getElementById('export-all-count-badge');
+  const badgeSelected = document.getElementById('export-selected-count-badge');
+  const optSelected = document.getElementById('export-opt-selected');
+
+  if (badgeFiltered) badgeFiltered.textContent = displayedApps.length;
+  if (badgeAll) badgeAll.textContent = allSource.length;
+  if (badgeSelected) badgeSelected.textContent = selectedAppIds.size;
+  if (optSelected) optSelected.disabled = selectedAppIds.size === 0;
 
   // Update Dynamic Table Headers
   const thDate = document.getElementById('th-app-date');
@@ -1664,6 +1697,10 @@ function updateBulkActionBar() {
 
   if (currentAppView === 'active') {
     buttonsEl.innerHTML = `
+      <button type="button" class="btn-bulk-action" style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399;" onclick="window.exportSelectedApplicationsToExcel()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span>Export Selected (${selectedAppIds.size})</span>
+      </button>
       <button type="button" class="btn-bulk-action delete" onclick="window.bulkPermanentlyDeleteActive()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         <span>Delete Selected (${selectedAppIds.size})</span>
@@ -1675,6 +1712,10 @@ function updateBulkActionBar() {
     `;
   } else {
     buttonsEl.innerHTML = `
+      <button type="button" class="btn-bulk-action" style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399;" onclick="window.exportSelectedApplicationsToExcel()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span>Export Selected (${selectedAppIds.size})</span>
+      </button>
       <button type="button" class="btn-bulk-action restore" onclick="window.bulkRestoreApplications()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
         <span>Restore Selected (${selectedAppIds.size})</span>
@@ -1770,14 +1811,210 @@ if (searchAppInput) {
   });
 }
 
+const filterAppDateSelect = document.getElementById('filter-app-date');
+if (filterAppDateSelect) {
+  filterAppDateSelect.addEventListener('change', () => {
+    selectedAppIds.clear();
+    renderApplicationsTable();
+  });
+}
+
 const btnResetAppFilters = document.getElementById('btn-reset-app-filters');
 if (btnResetAppFilters) {
   btnResetAppFilters.addEventListener('click', () => {
     if (searchAppInput) searchAppInput.value = '';
     if (filterAppRoleSelect) filterAppRoleSelect.value = 'all';
     if (filterAppStatusSelect) filterAppStatusSelect.value = 'all';
+    if (filterAppDateSelect) filterAppDateSelect.value = 'all';
     selectedAppIds.clear();
     renderApplicationsTable();
+  });
+}
+
+/* ==========================================================================
+   APPLICATIONS EXCEL EXPORT ENGINE (SheetJS + CSV Fallback)
+   ========================================================================== */
+
+let isSheetJSLoading = false;
+async function loadSheetJS() {
+  if (window.XLSX) return window.XLSX;
+  if (isSheetJSLoading) {
+    let waited = 0;
+    while (!window.XLSX && waited < 50) {
+      await new Promise(r => setTimeout(r, 100));
+      waited++;
+    }
+    if (window.XLSX) return window.XLSX;
+  }
+  isSheetJSLoading = true;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    script.async = true;
+    script.onload = () => {
+      isSheetJSLoading = false;
+      resolve(window.XLSX);
+    };
+    script.onerror = (err) => {
+      isSheetJSLoading = false;
+      reject(err);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+function exportApplicationsToExcel(appsToExport, filenamePrefix = 'Synerbit_Applications') {
+  if (!appsToExport || appsToExport.length === 0) {
+    alert('No applications found to export for the current filter criteria.');
+    return;
+  }
+
+  const rows = appsToExport.map((app, idx) => {
+    const applicantName = app.applicantName || app.name || app.fullName || 'Anonymous Candidate';
+    const jobTitle = app.jobTitle || app.title || app.position || app.role || 'General Application';
+    const email = app.applicantEmail || app.email || '';
+    const phone = app.applicantPhone || app.phone || app.mobile || '';
+    const status = app.status || 'New';
+    const dateFormatted = formatDateTime(app.submittedAt || app.createdAt);
+    const portfolio = app.portfolioUrl || app.portfolio || '';
+    const resume = app.resumeUrl || app.resume || '';
+    const candidateNotes = app.notes || app.note || app.coverLetter || '';
+    const internalNotes = app.internalNotes || '';
+
+    return {
+      'S.No': idx + 1,
+      'Candidate ID': app.id || '',
+      'Submitted Date': dateFormatted,
+      'Applicant Name': applicantName,
+      'Role Applied For': jobTitle,
+      'Status': status,
+      'Email Address': email,
+      'Phone Number': phone,
+      'Portfolio / Links': portfolio,
+      'Resume URL': resume,
+      'Candidate Statement / Cover Note': candidateNotes,
+      'Internal Recruiter Notes': internalNotes
+    };
+  });
+
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const safePrefix = filenamePrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `${safePrefix}_${dateStr}.xlsx`;
+
+  loadSheetJS().then(XLSX => {
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+
+    // Apply auto-fit column widths
+    worksheet['!cols'] = [
+      { wch: 6 },  // S.No
+      { wch: 18 }, // Candidate ID
+      { wch: 22 }, // Submitted Date
+      { wch: 26 }, // Applicant Name
+      { wch: 28 }, // Role Applied For
+      { wch: 16 }, // Status
+      { wch: 28 }, // Email Address
+      { wch: 18 }, // Phone Number
+      { wch: 32 }, // Portfolio / Links
+      { wch: 36 }, // Resume URL
+      { wch: 42 }, // Candidate Statement
+      { wch: 42 }  // Internal Recruiter Notes
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Applications');
+    XLSX.writeFile(workbook, filename);
+  }).catch(err => {
+    console.warn('Could not load SheetJS from CDN, falling back to CSV export:', err);
+    exportToCsvFallback(rows, filename.replace('.xlsx', '.csv'));
+  });
+}
+
+function exportToCsvFallback(rows, filename) {
+  if (!rows || rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csvLines = [
+    headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
+    ...rows.map(row => headers.map(h => {
+      const val = (row[h] || '').toString().replace(/"/g, '""');
+      return `"${val}"`;
+    }).join(','))
+  ];
+  const csvContent = '\uFEFF' + csvLines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Bulk & Global Export Actions
+window.exportSelectedApplicationsToExcel = () => {
+  const allSource = currentAppView === 'active' ? currentApplications : currentDeletedApplications;
+  const selected = allSource.filter(a => selectedAppIds.has(a.id));
+  if (selected.length === 0) {
+    alert('Please select at least one candidate using the checkboxes to export.');
+    return;
+  }
+  exportApplicationsToExcel(selected, `Synerbit_Applications_Selected_${selected.length}`);
+};
+
+// Toggle Export Dropdown
+const btnExportApps = document.getElementById('btn-export-apps-excel');
+const exportAppsMenu = document.getElementById('export-apps-menu');
+
+if (btnExportApps && exportAppsMenu) {
+  btnExportApps.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isShowing = exportAppsMenu.style.display === 'flex';
+    exportAppsMenu.style.display = isShowing ? 'none' : 'flex';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!btnExportApps.contains(e.target) && !exportAppsMenu.contains(e.target)) {
+      exportAppsMenu.style.display = 'none';
+    }
+  });
+}
+
+// Option 1: Export Current Filtered View (Role, Status, Date, Search)
+const exportOptFiltered = document.getElementById('export-opt-filtered');
+if (exportOptFiltered) {
+  exportOptFiltered.addEventListener('click', () => {
+    if (exportAppsMenu) exportAppsMenu.style.display = 'none';
+    const displayed = getFilteredApplications();
+    const roleVal = document.getElementById('filter-app-role')?.value || 'all';
+    const statusVal = document.getElementById('filter-app-status')?.value || 'all';
+    const dateVal = document.getElementById('filter-app-date')?.value || 'all';
+
+    let prefixParts = ['Synerbit_Applications'];
+    if (roleVal !== 'all') prefixParts.push(roleVal);
+    if (statusVal !== 'all') prefixParts.push(statusVal);
+    if (dateVal !== 'all') prefixParts.push(dateVal);
+    if (prefixParts.length === 1) prefixParts.push('Filtered');
+
+    exportApplicationsToExcel(displayed, prefixParts.join('_'));
+  });
+}
+
+// Option 2: Export All Applications
+const exportOptAll = document.getElementById('export-opt-all');
+if (exportOptAll) {
+  exportOptAll.addEventListener('click', () => {
+    if (exportAppsMenu) exportAppsMenu.style.display = 'none';
+    const allSource = currentAppView === 'active' ? currentApplications : currentDeletedApplications;
+    exportApplicationsToExcel(allSource, 'Synerbit_Applications_All');
+  });
+}
+
+// Option 3: Export Selected Applications
+const exportOptSelected = document.getElementById('export-opt-selected');
+if (exportOptSelected) {
+  exportOptSelected.addEventListener('click', () => {
+    if (exportAppsMenu) exportAppsMenu.style.display = 'none';
+    window.exportSelectedApplicationsToExcel();
   });
 }
 
