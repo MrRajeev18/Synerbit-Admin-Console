@@ -1993,12 +1993,34 @@ const btnCalendarTrigger = document.getElementById('btn-calendar-trigger');
 const calendarPopover = document.getElementById('calendar-popover');
 const calendarPickerWrapper = document.getElementById('calendar-picker-wrapper');
 
+function ensurePopoverInViewport() {
+  if (!calendarPopover) return;
+  calendarPopover.style.right = '0';
+  calendarPopover.style.left = 'auto';
+
+  const rect = calendarPopover.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+
+  if (rect.right > viewportWidth - 12) {
+    const diff = rect.right - (viewportWidth - 12);
+    calendarPopover.style.right = `${diff}px`;
+  }
+  const updatedRect = calendarPopover.getBoundingClientRect();
+  if (updatedRect.left < 12) {
+    calendarPopover.style.left = '0';
+    calendarPopover.style.right = 'auto';
+  }
+}
+
 if (btnCalendarTrigger && calendarPopover) {
   btnCalendarTrigger.addEventListener('click', (e) => {
     e.stopPropagation();
     const isShowing = calendarPopover.style.display === 'block';
     calendarPopover.style.display = isShowing ? 'none' : 'block';
-    if (!isShowing) renderCalendarPopover();
+    if (!isShowing) {
+      renderCalendarPopover();
+      ensurePopoverInViewport();
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -2019,6 +2041,7 @@ if (filterAppDateSelect) {
         if (calendarPopover) {
           calendarPopover.style.display = 'block';
           renderCalendarPopover();
+          ensurePopoverInViewport();
         }
       }
     } else {
