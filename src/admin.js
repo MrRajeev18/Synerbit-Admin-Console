@@ -1063,10 +1063,10 @@ function renderDashboardActivity() {
         const dateStr = formatDateTime(app.submittedAt || app.createdAt);
         const status = app.status || 'New';
         return `
-        <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
+        <div style="padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-weight: 700; color: #ffffff;">${escapeHtml(name)}</div>
-            <div style="font-size: 0.8rem; color: #94a3b8;">${escapeHtml(role)} &bull; ${dateStr}</div>
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.82rem;">${escapeHtml(name)}</div>
+            <div style="font-size: 0.74rem; color: #64748b;">${escapeHtml(role)} &bull; ${dateStr}</div>
           </div>
           <span class="badge ${status === 'New' ? 'cyan' : 'emerald'}">${status}</span>
         </div>
@@ -1085,10 +1085,10 @@ function renderDashboardActivity() {
         const dateStr = formatDateTime(idea.submittedAt || idea.createdAt);
         const stage = idea.stage || 'Concept';
         return `
-        <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
+        <div style="padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-weight: 700; color: #ffffff;">${escapeHtml(title)}</div>
-            <div style="font-size: 0.8rem; color: #94a3b8;">by ${escapeHtml(founder)} &bull; ${dateStr}</div>
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.82rem;">${escapeHtml(title)}</div>
+            <div style="font-size: 0.74rem; color: #64748b;">by ${escapeHtml(founder)} &bull; ${dateStr}</div>
           </div>
           <span class="badge amber">${escapeHtml(stage)}</span>
         </div>
@@ -1155,10 +1155,10 @@ function renderProductsTable() {
     return `
       <tr>
         <td style="vertical-align: middle;">
-          <strong style="color: #ffffff; font-size: 0.95rem;">${escapeHtml(p.name)}</strong>
-          <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">${escapeHtml(p.tagline || '')}</div>
+          <strong style="color: #0f172a; font-size: 0.86rem;">${escapeHtml(p.name)}</strong>
+          <div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">${escapeHtml(p.tagline || '')}</div>
         </td>
-        <td style="vertical-align: middle; color: #cbd5e1;">${escapeHtml(p.category || 'Platform')}</td>
+        <td style="vertical-align: middle; color: #475569;">${escapeHtml(p.category || 'Platform')}</td>
         <td style="vertical-align: middle; white-space: nowrap;">
           <span class="product-status-badge ${color}">
             <span class="status-indicator-dot"></span>
@@ -1341,7 +1341,7 @@ function renderJobsTable() {
   tbody.innerHTML = filtered.map(j => `
     <tr>
       <td>
-        <strong style="color: #ffffff;">${escapeHtml(j.title)}</strong>
+        <strong style="color: #0f172a;">${escapeHtml(j.title)}</strong>
         <div style="margin-top: 4px;">${getJobTypeBadge(j.type)}</div>
       </td>
       <td>${escapeHtml(j.department)}</td>
@@ -1649,7 +1649,7 @@ function renderApplicationsTable() {
       actionsCellHtml = `
         <div class="app-row-actions">
           <button class="btn-table-action" onclick="window.viewApplication('${app.id}')" title="View Full Details">View</button>
-          <button class="btn-table-action" style="color: #34d399; border-color: rgba(16,185,129,0.35);" onclick="window.restoreApplication('${app.id}')" title="Restore to Active Applications">Restore</button>
+          <button class="btn-table-action" style="color: #047857; border-color: #a7f3d0;" onclick="window.restoreApplication('${app.id}')" title="Restore to Active Applications">Restore</button>
           <button class="btn-table-action delete" onclick="window.deleteApplicationPermanently('${app.id}')" title="Delete Permanently from Firestore">Purge</button>
         </div>
       `;
@@ -1661,19 +1661,19 @@ function renderApplicationsTable() {
           <input type="checkbox" class="table-checkbox app-row-checkbox" data-id="${app.id}" ${isSelected ? 'checked' : ''} onchange="window.toggleAppSelect('${app.id}', this.checked)" />
         </td>
         <td>
-          <strong style="color: #ffffff; display: block; line-height: 1.3;">${escapeHtml(applicantName)}</strong>
+          <strong style="color: #0f172a; display: block; line-height: 1.3;">${escapeHtml(applicantName)}</strong>
         </td>
         <td>
           <span class="app-role-pill">${escapeHtml(jobTitle)}</span>
         </td>
         <td>
-          <div>${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #cbd5e1; text-decoration: none;">${escapeHtml(email)}</a>` : '<span style="color: #64748b;">N/A</span>'}</div>
-          <div style="font-size: 0.78rem; color: #94a3b8;">${escapeHtml(phone)}</div>
+          <div>${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #0f172a; text-decoration: none;">${escapeHtml(email)}</a>` : '<span style="color: #64748b;">N/A</span>'}</div>
+          <div style="font-size: 0.74rem; color: #64748b;">${escapeHtml(phone)}</div>
         </td>
         <td>
-          ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" style="color: #38bdf8; text-decoration: underline; font-size: 0.82rem;">Resume ↗</a>` : '<span style="color: #64748b; font-size: 0.8rem;">No file</span>'}
+          ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" style="color: #0284c7; text-decoration: underline; font-size: 0.78rem;">Resume ↗</a>` : '<span style="color: #94a3b8; font-size: 0.76rem;">No file</span>'}
         </td>
-        <td style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap;">${dateStr}</td>
+        <td style="font-size: 0.76rem; color: #64748b; white-space: nowrap;">${dateStr}</td>
         <td>${statusCellHtml}</td>
         <td>${actionsCellHtml}</td>
       </tr>
@@ -1697,7 +1697,7 @@ function updateBulkActionBar() {
 
   if (currentAppView === 'active') {
     buttonsEl.innerHTML = `
-      <button type="button" class="btn-bulk-action" style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399;" onclick="window.exportSelectedApplicationsToExcel()">
+      <button type="button" class="btn-bulk-action" style="background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857;" onclick="window.exportSelectedApplicationsToExcel()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         <span>Export Selected (${selectedAppIds.size})</span>
       </button>
@@ -1705,14 +1705,14 @@ function updateBulkActionBar() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         <span>Delete Selected (${selectedAppIds.size})</span>
       </button>
-      <button type="button" class="btn-bulk-action" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);" onclick="window.bulkMoveToTrash()">
+      <button type="button" class="btn-bulk-action" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;" onclick="window.bulkMoveToTrash()">
         <span>Move to Trash (${selectedAppIds.size})</span>
       </button>
       <button type="button" class="btn-bulk-action deselect" onclick="window.deselectAllApps()">Deselect All</button>
     `;
   } else {
     buttonsEl.innerHTML = `
-      <button type="button" class="btn-bulk-action" style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399;" onclick="window.exportSelectedApplicationsToExcel()">
+      <button type="button" class="btn-bulk-action" style="background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857;" onclick="window.exportSelectedApplicationsToExcel()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         <span>Export Selected (${selectedAppIds.size})</span>
       </button>
@@ -2333,14 +2333,14 @@ window.viewApplication = (id) => {
 
   const body = document.getElementById('view-app-body');
   body.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-light); padding-bottom: 10px;">
       <div>
-        <h4 style="color: #ffffff; font-size: 1.2rem; margin-bottom: 4px;">${escapeHtml(applicantName)}</h4>
-        <div style="color: #38bdf8; font-size: 0.88rem;">Applying for: ${escapeHtml(jobTitle)}</div>
+        <h4 style="color: #0f172a; font-size: 1.15rem; margin-bottom: 2px;">${escapeHtml(applicantName)}</h4>
+        <div style="color: #0284c7; font-size: 0.82rem;">Applying for: ${escapeHtml(jobTitle)}</div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
-        <label style="font-size: 0.8rem; color: #94a3b8; margin: 0;">Stage:</label>
-        <select class="form-select-sm app-status-select status-${statusSlug}" style="padding: 4px 10px; font-weight: 600;" onchange="const s = this.value; this.className='form-select-sm app-status-select status-' + s.toLowerCase().replace(/\\s+/g, '-'); window.updateAppStatus('${app.id}', s)">
+        <label style="font-size: 0.74rem; color: #64748b; margin: 0;">Stage:</label>
+        <select class="form-select-sm app-status-select status-${statusSlug}" style="padding: 3px 22px 3px 8px; font-weight: 600;" onchange="const s = this.value; this.className='form-select-sm app-status-select status-' + s.toLowerCase().replace(/\\s+/g, '-'); window.updateAppStatus('${app.id}', s)">
           <option value="New" ${normStatus === 'New' ? 'selected' : ''}>New</option>
           <option value="Under Review" ${normStatus === 'Under Review' ? 'selected' : ''}>Under Review</option>
           <option value="Shortlisted" ${normStatus === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
@@ -2351,31 +2351,31 @@ window.viewApplication = (id) => {
       </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
-      <div><strong>Email:</strong> ${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #38bdf8;">${escapeHtml(email)}</a>` : 'N/A'}</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; font-size: 0.82rem;">
+      <div><strong>Email:</strong> ${email !== 'N/A' ? `<a href="mailto:${escapeHtml(email)}" style="color: #0284c7;">${escapeHtml(email)}</a>` : 'N/A'}</div>
       <div><strong>Phone:</strong> ${escapeHtml(phone)}</div>
     </div>
-    <p style="margin-bottom: 14px;"><strong>Portfolio / Profile:</strong> ${portfolio ? `<a href="${escapeHtml(portfolio)}" target="_blank" style="color: #38bdf8;">${escapeHtml(portfolio)} ↗</a>` : '<span style="color: #94a3b8;">None provided</span>'}</p>
+    <p style="margin-bottom: 12px; font-size: 0.82rem;"><strong>Portfolio / Profile:</strong> ${portfolio ? `<a href="${escapeHtml(portfolio)}" target="_blank" style="color: #0284c7;">${escapeHtml(portfolio)} ↗</a>` : '<span style="color: #94a3b8;">None provided</span>'}</p>
     
-    <p style="margin-top: 14px; margin-bottom: 4px;"><strong>Applicant Cover Note:</strong></p>
-    <div style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-style: italic; color: #cbd5e1; font-size: 0.9rem;">
+    <p style="margin-top: 12px; margin-bottom: 4px; font-size: 0.8rem;"><strong>Applicant Cover Note:</strong></p>
+    <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-style: italic; color: #334155; font-size: 0.82rem;">
       "${escapeHtml(note)}"
     </div>
 
-    <div style="background: rgba(2,6,23,0.6); border: 1px solid rgba(56,189,248,0.2); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+    <div style="background: #f8fafc; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <label for="modal-app-notes" style="font-weight: 600; color: #38bdf8; font-size: 0.85rem; margin: 0; display: flex; align-items: center; gap: 6px;">
+        <label for="modal-app-notes" style="font-weight: 600; color: #0284c7; font-size: 0.8rem; margin: 0; display: flex; align-items: center; gap: 6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
           Internal Recruiter / Interviewer Notes
         </label>
-        <button type="button" id="btn-save-app-notes" class="btn-table-action" style="padding: 4px 10px; font-size: 0.75rem; border-color: rgba(56,189,248,0.3); color: #38bdf8;" onclick="window.saveAppNotes('${app.id}')">Save Notes</button>
+        <button type="button" id="btn-save-app-notes" class="btn-table-action" style="padding: 3px 8px; font-size: 0.74rem; border-color: #bae6fd; color: #0284c7; background: #ffffff;" onclick="window.saveAppNotes('${app.id}')">Save Notes</button>
       </div>
-      <textarea id="modal-app-notes" rows="3" class="form-input" style="width: 100%; font-size: 0.85rem; padding: 8px; background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #e2e8f0; resize: vertical;" placeholder="Add private feedback, screening notes, interview scores or timeline...">${escapeHtml(internalNotes)}</textarea>
+      <textarea id="modal-app-notes" rows="3" class="form-input" style="width: 100%; font-size: 0.8rem; padding: 8px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; color: #0f172a; resize: vertical;" placeholder="Add private feedback, screening notes, interview scores or timeline...">${escapeHtml(internalNotes)}</textarea>
     </div>
 
-    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
       ${resume ? `<a href="${escapeHtml(resume)}" target="_blank" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Download / Open Resume Document ↗</a>` : ''}
-      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600; margin-left: auto;" onclick="window.deleteApplicationPermanently('${app.id}'); window.closeModal('modal-view-app');">Delete Application</button>
+      <button type="button" class="btn-table-action delete" style="padding: 6px 12px; font-weight: 600; margin-left: auto;" onclick="window.deleteApplicationPermanently('${app.id}'); window.closeModal('modal-view-app');">Delete Application</button>
     </div>
   `;
   openModal('modal-view-app');
@@ -2416,17 +2416,17 @@ function renderIdeasTable() {
 
   tbody.innerHTML = filtered.map(idea => `
     <tr>
-      <td><strong style="color: #ffffff;">${escapeHtml(idea.conceptName)}</strong></td>
+      <td><strong style="color: #0f172a;">${escapeHtml(idea.conceptName)}</strong></td>
       <td>
         <div>${escapeHtml(idea.founderName)}</div>
-        <div style="font-size: 0.78rem; color: #94a3b8;">${escapeHtml(idea.founderEmail)}</div>
+        <div style="font-size: 0.74rem; color: #64748b;">${escapeHtml(idea.founderEmail)}</div>
       </td>
       <td><span class="badge amber">${idea.stage}</span></td>
       <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(idea.elevatorPitch || '')}</td>
-      <td style="font-size: 0.8rem; color: #94a3b8;">${formatDateTime(idea.submittedAt || idea.createdAt)}</td>
+      <td style="font-size: 0.76rem; color: #64748b;">${formatDateTime(idea.submittedAt || idea.createdAt)}</td>
       <td style="white-space: nowrap;">
         <button class="btn-table-action" onclick="window.viewIdea('${idea.id}')">View Pitch</button>
-        <button class="btn-table-action delete" style="color: #f87171; margin-left: 4px;" onclick="window.deleteIdea('${idea.id}')" title="Permanently Delete Idea from Firebase">Delete</button>
+        <button class="btn-table-action delete" style="margin-left: 4px;" onclick="window.deleteIdea('${idea.id}')" title="Permanently Delete Idea from Firebase">Delete</button>
       </td>
     </tr>
   `).join('');
@@ -2444,27 +2444,27 @@ window.viewIdea = (id) => {
   if (!idea) return;
   const body = document.getElementById('view-idea-body');
   body.innerHTML = `
-    <h4 style="color: #ffffff; font-size: 1.25rem; margin-bottom: 4px;">${escapeHtml(idea.conceptName)}</h4>
-    <div style="color: #38bdf8; font-size: 0.88rem; margin-bottom: 16px;">
-      Founder: ${escapeHtml(idea.founderName)} &bull; <a href="mailto:${idea.founderEmail}" style="color: #38bdf8;">${escapeHtml(idea.founderEmail)}</a>
-      ${idea.background ? `<div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">Background: ${escapeHtml(idea.background)}</div>` : ''}
+    <h4 style="color: #0f172a; font-size: 1.15rem; margin-bottom: 2px;">${escapeHtml(idea.conceptName)}</h4>
+    <div style="color: #0284c7; font-size: 0.82rem; margin-bottom: 14px;">
+      Founder: ${escapeHtml(idea.founderName)} &bull; <a href="mailto:${idea.founderEmail}" style="color: #0284c7;">${escapeHtml(idea.founderEmail)}</a>
+      ${idea.background ? `<div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">Background: ${escapeHtml(idea.background)}</div>` : ''}
     </div>
     
-    <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+    <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;">
       <span class="badge amber">Stage: ${escapeHtml(idea.stage || 'Concept')}</span>
       ${idea.productType ? `<span class="badge cyan">Type: ${escapeHtml(idea.productType)}</span>` : ''}
       <span class="badge emerald">Terms Agreed: ✓</span>
     </div>
 
-    <p style="margin-top: 10px;"><strong>Core Problem:</strong><br />${escapeHtml(idea.problem)}</p>
-    <p style="margin-top: 10px;"><strong>Proposed Solution:</strong><br />${escapeHtml(idea.solution)}</p>
-    ${idea.targetAudience ? `<p style="margin-top: 10px;"><strong>Target Audience / Users:</strong><br />${escapeHtml(idea.targetAudience)}</p>` : ''}
-    ${idea.successReason ? `<p style="margin-top: 10px;"><strong>Why it could succeed (Potential):</strong><br />${escapeHtml(idea.successReason)}</p>` : ''}
-    ${idea.additionalContext ? `<p style="margin-top: 10px;"><strong>Additional Context / Links:</strong><br />${escapeHtml(idea.additionalContext)}</p>` : ''}
-    ${idea.deckUrl ? `<p style="margin-top: 14px;"><strong>Deck / Prototype:</strong> <a href="${idea.deckUrl}" target="_blank" style="color: #38bdf8;">${escapeHtml(idea.deckUrl)} ↗</a></p>` : ''}
+    <p style="margin-top: 8px; font-size: 0.82rem;"><strong>Core Problem:</strong><br />${escapeHtml(idea.problem)}</p>
+    <p style="margin-top: 8px; font-size: 0.82rem;"><strong>Proposed Solution:</strong><br />${escapeHtml(idea.solution)}</p>
+    ${idea.targetAudience ? `<p style="margin-top: 8px; font-size: 0.82rem;"><strong>Target Audience / Users:</strong><br />${escapeHtml(idea.targetAudience)}</p>` : ''}
+    ${idea.successReason ? `<p style="margin-top: 8px; font-size: 0.82rem;"><strong>Why it could succeed (Potential):</strong><br />${escapeHtml(idea.successReason)}</p>` : ''}
+    ${idea.additionalContext ? `<p style="margin-top: 8px; font-size: 0.82rem;"><strong>Additional Context / Links:</strong><br />${escapeHtml(idea.additionalContext)}</p>` : ''}
+    ${idea.deckUrl ? `<p style="margin-top: 12px; font-size: 0.82rem;"><strong>Deck / Prototype:</strong> <a href="${idea.deckUrl}" target="_blank" style="color: #0284c7;">${escapeHtml(idea.deckUrl)} ↗</a></p>` : ''}
     
-    <div style="margin-top: 24px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap;">
-      <button type="button" class="btn-table-action delete" style="color: #f87171; border-color: rgba(248,113,113,0.3); padding: 8px 14px; font-weight: 600;" onclick="window.deleteIdea('${idea.id}'); window.closeModal('modal-view-idea');">Delete Pitch</button>
+    <div style="margin-top: 20px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap;">
+      <button type="button" class="btn-table-action delete" style="padding: 6px 12px; font-weight: 600;" onclick="window.deleteIdea('${idea.id}'); window.closeModal('modal-view-idea');">Delete Pitch</button>
       <a href="mailto:${idea.founderEmail}?subject=Re:%20Synerbit%20Incubation%20Proposal%20-%20${encodeURIComponent(idea.conceptName)}" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Reply to Founder via Email ✉️</a>
     </div>
   `;
@@ -2532,16 +2532,16 @@ function renderContactsTable() {
     return `
       <tr>
         <td>${statusBadge}</td>
-        <td><strong style="color: #ffffff;">${escapeHtml(c.name || 'Anonymous')}</strong></td>
-        <td><a href="mailto:${escapeHtml(c.email)}" style="color: #38bdf8; text-decoration: underline;" title="Reply to ${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></td>
-        <td><span style="font-weight: 600; color: #cbd5e1;">${escapeHtml(c.subject || 'General Inquiry')}</span></td>
-        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2e8f0;" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</td>
-        <td style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap;">${formatDateTime(c.submittedAt || c.createdAt)}</td>
+        <td><strong style="color: #0f172a;">${escapeHtml(c.name || 'Anonymous')}</strong></td>
+        <td><a href="mailto:${escapeHtml(c.email)}" style="color: #0284c7; text-decoration: underline;" title="Reply to ${escapeHtml(c.email)}">${escapeHtml(c.email)}</a></td>
+        <td><span style="font-weight: 600; color: #334155;">${escapeHtml(c.subject || 'General Inquiry')}</span></td>
+        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155;" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</td>
+        <td style="font-size: 0.76rem; color: #64748b; white-space: nowrap;">${formatDateTime(c.submittedAt || c.createdAt)}</td>
         <td style="white-space: nowrap;">
           <button class="btn-table-action" onclick="window.viewContact('${c.id}')">View</button>
-          <button class="btn-table-action" style="color: #94a3b8; font-size: 0.74rem;" onclick="window.toggleContactRead('${c.id}')" title="${toggleLabel}">${toggleLabel}</button>
+          <button class="btn-table-action" style="color: #64748b; font-size: 0.72rem;" onclick="window.toggleContactRead('${c.id}')" title="${toggleLabel}">${toggleLabel}</button>
           <a href="mailto:${encodeURIComponent(c.email)}?subject=Re:%20${encodeURIComponent(c.subject || 'Synerbit Inquiry')}" class="btn-table-action" style="text-decoration: none; display: inline-block;">Reply ✉️</a>
-          <button class="btn-table-action" style="color: #f87171;" onclick="window.deleteContact('${c.id}')" title="Delete">✕</button>
+          <button class="btn-table-action delete" onclick="window.deleteContact('${c.id}')" title="Delete">✕</button>
         </td>
       </tr>
     `;
@@ -2640,20 +2640,20 @@ window.viewContact = async (id) => {
   const body = document.getElementById('view-contact-body');
   if (body) {
     body.innerHTML = `
-      <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; margin-bottom: 16px;">
-        <h4 style="color: #ffffff; font-size: 1.25rem; margin-bottom: 4px;">${escapeHtml(contact.name || 'Anonymous')}</h4>
-        <div style="color: #38bdf8; font-size: 0.88rem;">
-          <a href="mailto:${escapeHtml(contact.email)}" style="color: #38bdf8; text-decoration: underline;">${escapeHtml(contact.email)}</a>
-          &bull; <span style="color: #94a3b8;">${formatDateTime(contact.submittedAt || contact.createdAt)}</span>
+      <div style="border-bottom: 1px solid var(--border-light); padding-bottom: 10px; margin-bottom: 14px;">
+        <h4 style="color: #0f172a; font-size: 1.15rem; margin-bottom: 2px;">${escapeHtml(contact.name || 'Anonymous')}</h4>
+        <div style="color: #0284c7; font-size: 0.82rem;">
+          <a href="mailto:${escapeHtml(contact.email)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(contact.email)}</a>
+          &bull; <span style="color: #64748b;">${formatDateTime(contact.submittedAt || contact.createdAt)}</span>
         </div>
       </div>
       
-      <p style="margin-bottom: 8px;"><strong>Subject:</strong> <span style="color: #ffffff;">${escapeHtml(contact.subject || 'General Inquiry')}</span></p>
-      <p style="margin-bottom: 6px;"><strong>Message Content:</strong></p>
-      <div style="background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 14px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap; font-size: 0.95rem;">${escapeHtml(contact.message)}</div>
+      <p style="margin-bottom: 8px; font-size: 0.82rem;"><strong>Subject:</strong> <span style="color: #0f172a;">${escapeHtml(contact.subject || 'General Inquiry')}</span></p>
+      <p style="margin-bottom: 6px; font-size: 0.8rem;"><strong>Message Content:</strong></p>
+      <div style="background: #f8fafc; border: 1px solid var(--border-light); border-radius: 8px; padding: 12px; line-height: 1.6; color: #334155; white-space: pre-wrap; font-size: 0.85rem;">${escapeHtml(contact.message)}</div>
       
-      <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: flex-end;">
-        <button type="button" class="btn-table-action" style="color: #f87171;" onclick="window.deleteContact('${contact.id}'); window.closeModal('modal-view-contact');">Delete Message</button>
+      <div style="margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end;">
+        <button type="button" class="btn-table-action delete" style="padding: 6px 12px;" onclick="window.deleteContact('${contact.id}'); window.closeModal('modal-view-contact');">Delete Message</button>
         <a href="mailto:${encodeURIComponent(contact.email)}?subject=Re:%20${encodeURIComponent(contact.subject || 'Synerbit Inquiry')}" class="btn-primary-action" style="display: inline-block; text-decoration: none;">Reply via Email ✉️</a>
       </div>
     `;
@@ -2718,7 +2718,7 @@ function renderTeamTable() {
   const tbody = document.getElementById('team-table-body');
   const displayTeam = deduplicateTeam(currentTeam);
   if (displayTeam.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 36px 20px;"><div style="font-size: 0.95rem; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">No team members found</div><div style="font-size: 0.8rem; color: #64748b;">Add members above to grant access to the Admin Console.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 36px 20px;"><div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 4px;">No team members found</div><div style="font-size: 0.78rem; color: #64748b;">Add members above to grant access to the Admin Console.</div></td></tr>';
     return;
   }
 
