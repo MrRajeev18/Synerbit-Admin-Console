@@ -1,0 +1,14 @@
+{
+  "name": "synerbit-ga4-sync",
+  "version": "1.0.0",
+  "description": "Syncs Google Analytics 4 telemetry to Firestore for Synerbit Admin Panel",
+  "main": "sync-ga4.js",
+  "scripts": {
+    "sync": "node sync-ga4.js",
+    "mock": "node sync-ga4.js --mock"
+  },
+  "dependencies": {
+    "@google-analytics/data": "^4.10.0",
+    "firebase-admin": "^12.7.0"
+  }
+}

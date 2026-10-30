@@ -226,6 +226,69 @@
                 </div>
               </div>
             </div>
+
+            <!-- Website Traffic & Engagement (Google Analytics 4) -->
+            <div id="dash-section-analytics" style="margin-top: 28px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0 0 3px 0; display: flex; align-items: center; gap: 8px;">
+                    Website Traffic &amp; Engagement
+                    <span class="badge cyan" style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase;">GA4 &bull; G-BJGWMMQV91</span>
+                  </h3>
+                  <div style="font-size: 0.74rem; color: #64748b;">Telemetry from synerbit.in public landing page &amp; careers portal</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span id="ga-last-synced" style="font-size: 0.72rem; color: #64748b; font-family: var(--font-mono); background: #f8fafc; border: 1px solid #e2e8f0; padding: 3px 8px; border-radius: 6px;">Awaiting sync</span>
+                </div>
+              </div>
+
+              <!-- GA4 KPI Grid -->
+              <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
+                <div class="kpi-card">
+                  <div class="kpi-label">30-Day Active Users</div>
+                  <div class="kpi-value" id="ga-active-users">—</div>
+                  <div class="kpi-hint">Unique website visitors</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Total Page Views</div>
+                  <div class="kpi-value" id="ga-page-views">—</div>
+                  <div class="kpi-hint">Landing &amp; jobs impressions</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">User Sessions</div>
+                  <div class="kpi-value" id="ga-sessions">—</div>
+                  <div class="kpi-hint">Total browsing sessions</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Engagement Rate</div>
+                  <div class="kpi-value" id="ga-engagement-rate">—</div>
+                  <div class="kpi-hint">Engaged session ratio</div>
+                </div>
+              </div>
+
+              <!-- GA4 Breakdown (Sources & Top Pages) -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+                <div class="data-card">
+                  <div class="data-card-header">
+                    <h4 class="data-card-title">Top Traffic Sources</h4>
+                    <span style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
+                  </div>
+                  <div id="ga-sources-list">
+                    <div class="recent-list-empty">Awaiting Google Analytics sync data.</div>
+                  </div>
+                </div>
+
+                <div class="data-card">
+                  <div class="data-card-header">
+                    <h4 class="data-card-title">Top Visited Pages</h4>
+                    <span style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
+                  </div>
+                  <div id="ga-pages-list">
+                    <div class="recent-list-empty">Awaiting Google Analytics sync data.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <!-- 2. PRODUCTS MANAGEMENT -->

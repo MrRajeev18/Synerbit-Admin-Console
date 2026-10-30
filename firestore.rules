@@ -89,6 +89,13 @@ service cloud.firestore {
       allow write: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
     }
 
+    // 7. SITE ANALYTICS (TELEMETRY):
+    // Authenticated admin users can view cached analytics
+    match /site_analytics/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
     // Fallback rule: deny all other collections by default for security
     match /{document=**} {
       allow read, write: if false;

@@ -705,7 +705,7 @@ function setupRealtimeListeners(db) {
   });
   realtimeUnsubscribes = [];
 
-  import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js").then(({ collection, onSnapshot }) => {
+  import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js").then(({ collection, doc, onSnapshot }) => {
     // 1. Applications Listener
     try {
       const unsubApps = onSnapshot(collection(db, "job_applications"), (snapshot) => {
@@ -818,6 +818,21 @@ function setupRealtimeListeners(db) {
         }
       }, err => console.warn("Live team listener note:", err));
       realtimeUnsubscribes.push(unsubTeam);
+    } catch (_) {}
+
+    // 7. Site Analytics (GA4) Listener
+    try {
+      const unsubAnalytics = onSnapshot(doc(db, "site_analytics", "overview"), (snap) => {
+        if (snap.exists()) {
+          renderSiteAnalytics(snap.data());
+        } else {
+          renderSiteAnalytics(null);
+        }
+      }, err => {
+        console.warn("Analytics listener note:", err);
+        renderSiteAnalytics(null);
+      });
+      realtimeUnsubscribes.push(unsubAnalytics);
     } catch (_) {}
   }).catch(err => console.warn("Could not setup realtime Firestore listeners:", err));
 }
@@ -1038,6 +1053,20 @@ async function loadAllData() {
         console.warn("Team members sync issue:", err);
       }
 
+      // 7. Fetch Site Analytics (GA4) Overview
+      try {
+        const { getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const analyticsSnap = await getDoc(doc(db, "site_analytics", "overview"));
+        if (analyticsSnap && analyticsSnap.exists()) {
+          renderSiteAnalytics(analyticsSnap.data());
+        } else {
+          renderSiteAnalytics(null);
+        }
+      } catch (err) {
+        console.warn("Site analytics sync issue:", err);
+        renderSiteAnalytics(null);
+      }
+
       if (statusText) statusText.textContent = 'Firestore: Connected';
       setupRealtimeListeners(db);
 
@@ -1049,6 +1078,102 @@ async function loadAllData() {
 
   // Update UI with fresh data
   updateAllUIPanels();
+}
+
+function renderSiteAnalytics(data) {
+  const usersEl = document.getElementById('ga-active-users');
+  const viewsEl = document.getElementById('ga-page-views');
+  const sessionsEl = document.getElementById('ga-sessions');
+  const engRateEl = document.getElementById('ga-engagement-rate');
+  const syncedEl = document.getElementById('ga-last-synced');
+  const sourcesEl = document.getElementById('ga-sources-list');
+  const pagesEl = document.getElementById('ga-pages-list');
+
+  if (!usersEl) return;
+
+  if (!data) {
+    usersEl.textContent = '—';
+    viewsEl.textContent = '—';
+    sessionsEl.textContent = '—';
+    engRateEl.textContent = '—';
+    if (syncedEl) syncedEl.textContent = 'Awaiting sync';
+    if (sourcesEl) sourcesEl.innerHTML = '<div class="recent-list-empty">Awaiting Google Analytics sync data.</div>';
+    if (pagesEl) pagesEl.innerHTML = '<div class="recent-list-empty">Awaiting Google Analytics sync data.</div>';
+    return;
+  }
+
+  // Format KPIs
+  usersEl.textContent = (typeof data.activeUsers === 'number') ? data.activeUsers.toLocaleString() : (data.activeUsers || '0');
+  viewsEl.textContent = (typeof data.pageViews === 'number') ? data.pageViews.toLocaleString() : (data.pageViews || '0');
+  sessionsEl.textContent = (typeof data.sessions === 'number') ? data.sessions.toLocaleString() : (data.sessions || '0');
+
+  if (data.engagementRate) {
+    engRateEl.textContent = data.engagementRate;
+  } else if (data.bounceRate) {
+    const br = parseFloat(data.bounceRate);
+    engRateEl.textContent = !isNaN(br) ? `${(100 - br).toFixed(1)}%` : '—';
+  } else {
+    engRateEl.textContent = '—';
+  }
+
+  if (syncedEl) {
+    if (data.lastSyncedAt) {
+      syncedEl.textContent = `Last synced: ${formatDateTime(data.lastSyncedAt)}`;
+    } else {
+      syncedEl.textContent = 'Active Telemetry';
+    }
+  }
+
+  // Top Sources
+  if (sourcesEl) {
+    const sources = Array.isArray(data.topSources) ? data.topSources : [];
+    if (sources.length === 0) {
+      sourcesEl.innerHTML = '<div class="recent-list-empty">No source data recorded yet.</div>';
+    } else {
+      const maxSessions = Math.max(...sources.map(s => Number(s.sessions) || 1), 1);
+      sourcesEl.innerHTML = sources.map(s => {
+        const count = Number(s.sessions) || 0;
+        const percent = Math.min(100, Math.max(8, Math.round((count / maxSessions) * 100)));
+        return `
+          <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 4px;">
+              <span style="font-weight: 600; color: #0f172a;">${escapeHtml(s.source || '(direct)')}</span>
+              <span style="font-family: var(--font-mono); color: #64748b; font-size: 0.74rem;">${count.toLocaleString()} sessions</span>
+            </div>
+            <div style="height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden;">
+              <div style="height: 100%; border-radius: 3px; background: linear-gradient(90deg, #0284c7, #38bdf8); width: ${percent}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // Top Pages
+  if (pagesEl) {
+    const pages = Array.isArray(data.topPages) ? data.topPages : [];
+    if (pages.length === 0) {
+      pagesEl.innerHTML = '<div class="recent-list-empty">No pageview data recorded yet.</div>';
+    } else {
+      const maxViews = Math.max(...pages.map(p => Number(p.views) || 1), 1);
+      pagesEl.innerHTML = pages.map(p => {
+        const count = Number(p.views) || 0;
+        const percent = Math.min(100, Math.max(8, Math.round((count / maxViews) * 100)));
+        const path = p.path || '/';
+        return `
+          <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 4px;">
+              <span style="font-weight: 600; color: #0f172a; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(path)}">${escapeHtml(path)}</span>
+              <span style="font-family: var(--font-mono); color: #64748b; font-size: 0.74rem;">${count.toLocaleString()} views</span>
+            </div>
+            <div style="height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden;">
+              <div style="height: 100%; border-radius: 3px; background: linear-gradient(90deg, #10b981, #34d399); width: ${percent}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 }
 
 function renderDashboardActivity() {
