@@ -186,6 +186,63 @@ body.admin-body {
   margin-top: 20px;
 }
 
+/* Auth Screen Specific Inputs (Consistent Dark Theme) */
+.auth-card .form-group {
+  margin-bottom: 16px;
+}
+
+.auth-card .form-label {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.auth-card .form-input {
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+  font-size: 0.88rem;
+  padding: 10px 14px;
+  border-radius: 9px;
+  transition: all 0.2s ease;
+}
+
+.auth-card .form-input::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.auth-card .form-input:focus {
+  background: rgba(30, 41, 59, 1);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+  color: #ffffff !important;
+}
+
+.auth-card .btn-toggle-pwd {
+  color: #94a3b8;
+  transition: color 0.15s ease;
+}
+
+.auth-card .btn-toggle-pwd:hover {
+  color: #f8fafc;
+}
+
+/* Chrome / Safari Autofill Override for Dark Auth Card */
+.auth-card .form-input:-webkit-autofill,
+.auth-card .form-input:-webkit-autofill:hover,
+.auth-card .form-input:-webkit-autofill:focus,
+.auth-card .form-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px #1e293b inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: #ffffff;
+}
+
 /* =========================================
    ADMIN LAYOUT
    ========================================= */
