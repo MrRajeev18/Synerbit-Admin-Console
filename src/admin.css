@@ -564,6 +564,18 @@ body.admin-body {
   color: var(--text-sub);
 }
 
+.dashboard-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-activity-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}
+
 .data-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);

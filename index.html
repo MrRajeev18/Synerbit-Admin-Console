@@ -195,7 +195,7 @@
             </div>
 
             <!-- Quick Recent Activity -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div class="dashboard-activity-grid">
               <div class="data-card" id="dash-card-apps">
                 <div class="data-card-header">
                   <h3 class="data-card-title">Recent Job Applications</h3>
@@ -213,6 +213,16 @@
                 </div>
                 <div id="dashboard-recent-ideas" class="recent-list-empty">
                   No ideas submitted yet.
+                </div>
+              </div>
+
+              <div class="data-card" id="dash-card-contacts">
+                <div class="data-card-header">
+                  <h3 class="data-card-title">Recent Contact Messages</h3>
+                  <button class="btn-text-action" onclick="document.querySelector('[data-tab=contacts]').click()">View All →</button>
+                </div>
+                <div id="dashboard-recent-contacts" class="recent-list-empty">
+                  No contact messages yet.
                 </div>
               </div>
             </div>

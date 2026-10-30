@@ -636,8 +636,10 @@ function enforcePermissions() {
   // Dashboard Recent Activity cards
   const dashApps = document.getElementById('dash-card-apps');
   const dashIdeas = document.getElementById('dash-card-ideas');
+  const dashContacts = document.getElementById('dash-card-contacts');
   if (dashApps) dashApps.style.display = hasPermission('applications') ? 'block' : 'none';
   if (dashIdeas) dashIdeas.style.display = hasPermission('ideas') ? 'block' : 'none';
+  if (dashContacts) dashContacts.style.display = hasPermission('contacts') ? 'block' : 'none';
 
   // If the user lands on an unauthorized tab, redirect to dashboard or first permitted tab
   const activePanel = document.querySelector('.content-panel.active');
@@ -1052,6 +1054,7 @@ async function loadAllData() {
 function renderDashboardActivity() {
   const appsBox = document.getElementById('dashboard-recent-apps');
   const ideasBox = document.getElementById('dashboard-recent-ideas');
+  const contactsBox = document.getElementById('dashboard-recent-contacts');
 
   if (appsBox) {
     if (currentApplications.length === 0) {
@@ -1091,6 +1094,32 @@ function renderDashboardActivity() {
             <div style="font-size: 0.74rem; color: #64748b;">by ${escapeHtml(founder)} &bull; ${dateStr}</div>
           </div>
           <span class="badge amber">${escapeHtml(stage)}</span>
+        </div>
+      `;
+      }).join('');
+    }
+  }
+
+  if (contactsBox) {
+    if (currentContacts.length === 0) {
+      contactsBox.innerHTML = '<div class="recent-list-empty">No contact messages yet.</div>';
+    } else {
+      const sortedContacts = [...currentContacts].sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
+      contactsBox.innerHTML = sortedContacts.slice(0, 4).map(c => {
+        const name = c.name || 'Anonymous';
+        const subject = c.subject || 'General Inquiry';
+        const dateStr = formatDateTime(c.submittedAt || c.createdAt);
+        const isRead = !!c.isRead;
+        const statusBadge = isRead
+          ? `<span class="read-badge">Read</span>`
+          : `<span class="unread-badge"><span class="unread-dot"></span> New</span>`;
+        return `
+        <div style="padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.15s ease;" onclick="window.viewContact('${c.id}')" onmouseenter="this.style.background='var(--bg-surface-subtle)'" onmouseleave="this.style.background='transparent'" title="Click to view message">
+          <div style="min-width: 0; padding-right: 8px;">
+            <div style="font-weight: 700; color: #0f172a; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(name)}</div>
+            <div style="font-size: 0.74rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(subject)} &bull; ${dateStr}</div>
+          </div>
+          <div style="flex-shrink: 0;">${statusBadge}</div>
         </div>
       `;
       }).join('');
