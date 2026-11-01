@@ -4569,7 +4569,7 @@ async function loadIssuedDocumentsFromFirebase() {
   renderCertArchiveTable();
 }
 
-// Render the Archive of Previously Issued Documents
+// Render the Archive of Previously Issued Documents with full rich details
 function renderCertArchiveTable() {
   const tbody = document.getElementById('cert-archive-table-body');
   const countBadge = document.getElementById('cert-archive-count');
@@ -4578,7 +4578,10 @@ function renderCertArchiveTable() {
   if (countBadge) countBadge.textContent = `${issuedDocumentsList.length} Records`;
 
   if (issuedDocumentsList.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">No documents issued yet. Select a template and create your first official certificate or letter above.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">
+      <div style="font-size: 0.86rem; font-weight: 700; color: #475569; margin-bottom: 4px;">No documents saved to archive yet.</div>
+      <div style="font-size: 0.73rem; color: #94a3b8;">Click "🖨️ Print / Save as PDF" or "💾 Save to Archive" above to automatically persist documents in the Firebase backend.</div>
+    </td></tr>`;
     return;
   }
 
@@ -4592,20 +4595,37 @@ function renderCertArchiveTable() {
     const nomenclature = doc.nomenclature || getDocNomenclature(doc.template, doc.name, doc.refId, 'standard');
     return `
       <tr>
-        <td style="font-family: monospace; font-weight: 700; color: #0284c7;">${escapeHtml(doc.refId || '—')}</td>
         <td>
-          <div style="font-weight: 700; color: #0f172a;">${escapeHtml(doc.name || '—')}</div>
-          <div style="font-size: 0.69rem; color: #0284c7; font-family: var(--font-mono); font-weight: 600; margin-top: 2px;">
-            ${escapeHtml(nomenclature)}
+          <div style="font-family: monospace; font-weight: 700; color: #0284c7; font-size: 0.82rem;">${escapeHtml(doc.refId || '—')}</div>
+          <div style="font-size: 0.65rem; color: #94a3b8; margin-top: 2px;">
+            ${doc.createdAt ? new Date(doc.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
           </div>
         </td>
-        <td>${typeBadges[doc.template] || '<span class="badge gray">Document</span>'}</td>
-        <td style="color: #475569;">${escapeHtml(doc.role || '—')}</td>
-        <td style="color: #64748b; font-size: 0.75rem;">${escapeHtml(formatCertDate(doc.offerDate))}</td>
+        <td>
+          <div style="font-weight: 700; color: #0f172a; font-size: 0.84rem;">${escapeHtml(doc.name || '—')}</div>
+          <div style="font-size: 0.69rem; color: #0284c7; font-family: var(--font-mono); font-weight: 600; margin-top: 2px; word-break: break-all;">
+            ${escapeHtml(nomenclature)}
+          </div>
+          ${doc.email ? `<div style="font-size: 0.68rem; color: #64748b; margin-top: 1px;">📧 ${escapeHtml(doc.email)}</div>` : ''}
+        </td>
+        <td>
+          ${typeBadges[doc.template] || '<span class="badge gray">Document</span>'}
+          <div style="font-size: 0.68rem; color: #64748b; margin-top: 4px;">${escapeHtml(doc.dept || 'Engineering')}</div>
+        </td>
+        <td>
+          <div style="color: #334155; font-weight: 600; font-size: 0.78rem;">${escapeHtml(doc.role || '—')}</div>
+          ${doc.stipend ? `<div style="font-size: 0.70rem; color: #16a34a; font-weight: 600; margin-top: 2px;">💰 ${escapeHtml(doc.stipend)}</div>` : ''}
+          ${doc.duration ? `<div style="font-size: 0.68rem; color: #64748b;">⏱️ ${escapeHtml(doc.duration)}</div>` : ''}
+        </td>
+        <td style="color: #64748b; font-size: 0.75rem;">
+          <div style="font-weight: 600; color: #334155;">${escapeHtml(formatCertDate(doc.offerDate))}</div>
+          ${doc.location ? `<div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">📍 ${escapeHtml(doc.location)}</div>` : ''}
+        </td>
         <td style="text-align: right;">
-          <div style="display: inline-flex; gap: 6px;">
-            <button class="btn-table-action" onclick="loadIssuedDocToEditor('${escapeHtml(doc.id)}')" title="Load into Editor">✏️ Edit</button>
-            <button class="btn-table-action" onclick="deleteIssuedDoc('${escapeHtml(doc.id)}')" title="Delete from Firebase Archive" style="color: #ef4444;">🗑️</button>
+          <div style="display: inline-flex; gap: 6px; align-items: center;">
+            <button class="btn-table-action" onclick="loadIssuedDocToEditor('${escapeHtml(doc.id)}')" title="Load into Editor & Preview" style="font-size: 0.72rem; padding: 4px 8px;">✏️ Edit</button>
+            <button class="btn-table-action" onclick="quickPrintIssuedDoc('${escapeHtml(doc.id)}')" title="Print Document" style="font-size: 0.72rem; padding: 4px 8px;">🖨️</button>
+            <button class="btn-table-action" onclick="deleteIssuedDoc('${escapeHtml(doc.id)}')" title="Delete from Firebase Archive" style="color: #ef4444; font-size: 0.72rem; padding: 4px 8px;">🗑️</button>
           </div>
         </td>
       </tr>
@@ -4656,9 +4676,17 @@ window.loadIssuedDocToEditor = function(docId) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
+// Quick Print an issued document directly from the archive
+window.quickPrintIssuedDoc = function(docId) {
+  loadIssuedDocToEditor(docId);
+  setTimeout(() => {
+    handleCertPrint();
+  }, 120);
+};
+
 // Permanently delete a document directly from the Firebase archive
 window.deleteIssuedDoc = async function(docId) {
-  if (!confirm('Are you sure you want to permanently delete this document from Firebase?')) return;
+  if (!confirm('Are you sure you want to permanently delete this document from Firebase backend?')) return;
   try {
     const db = await getFirestoreDb();
     const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
@@ -4671,10 +4699,59 @@ window.deleteIssuedDoc = async function(docId) {
   }
 };
 
+// Permanently delete ALL issued documents directly from the Firebase backend
+window.deleteAllIssuedDocsFromFirebase = async function() {
+  if (!issuedDocumentsList || issuedDocumentsList.length === 0) {
+    showToast('No documents to delete in Firebase archive.', 'info');
+    return;
+  }
+
+  const count = issuedDocumentsList.length;
+  const confirmMsg = `⚠️ Are you sure you want to permanently delete ALL ${count} issued document(s) from the Firebase backend?\n\nThis will completely purge all saved certificates and offer letters from the database. This action CANNOT be undone.`;
+  if (!confirm(confirmMsg)) return;
+
+  const btnDeleteAll = document.getElementById('btn-cert-delete-all');
+  const originalText = btnDeleteAll ? btnDeleteAll.innerHTML : '';
+  if (btnDeleteAll) {
+    btnDeleteAll.disabled = true;
+    btnDeleteAll.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 4px;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Deleting All from Firebase...`;
+  }
+
+  try {
+    const db = await getFirestoreDb();
+    const { doc, writeBatch } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    
+    // Batch delete in chunks of 400 (Firestore max limit is 500 ops per batch)
+    const chunkSize = 400;
+    for (let i = 0; i < issuedDocumentsList.length; i += chunkSize) {
+      const chunk = issuedDocumentsList.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.delete(doc(db, "issued_documents", item.id));
+      });
+      await batch.commit();
+    }
+
+    issuedDocumentsList = [];
+    activeEditingDocId = null;
+    showToast(`Successfully deleted all ${count} documents from Firebase backend!`, 'success');
+    renderCertArchiveTable();
+  } catch (err) {
+    console.error("Failed to delete all documents from Firebase:", err);
+    showToast(`Error deleting documents from Firebase: ${err.message}`, 'error');
+    await loadIssuedDocumentsFromFirebase();
+  } finally {
+    if (btnDeleteAll) {
+      btnDeleteAll.disabled = false;
+      btnDeleteAll.innerHTML = originalText;
+    }
+  }
+};
+
 // Save active document directly to Firebase backend
-async function handleCertSave() {
+async function handleCertSave(silent = false) {
   const btnSave = document.getElementById('btn-cert-save');
-  if (btnSave) {
+  if (btnSave && !silent) {
     btnSave.disabled = true;
     btnSave.textContent = 'Saving to Firebase...';
   }
@@ -4685,7 +4762,7 @@ async function handleCertSave() {
     if (!name) {
       showToast('Please enter the Recipient Full Name before saving.', 'error');
       nameInput?.focus();
-      return;
+      return false;
     }
 
     const refIdInput = document.getElementById('cert-input-ref-id');
@@ -4764,16 +4841,18 @@ async function handleCertSave() {
     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     await setDoc(doc(db, "issued_documents", docRecord.id), docRecord, { merge: true });
 
-    showToast(`Document ${nomenclature} successfully saved to Firebase!`, 'success');
+    showToast(`Document ${nomenclature} successfully saved to Firebase backend!`, 'success');
     activeEditingDocId = null;
 
     // Reload archive directly from Firebase
     await loadIssuedDocumentsFromFirebase();
+    return true;
   } catch (err) {
     console.error("Failed to save document to Firebase:", err);
     showToast(`Failed to save document: ${err.message || 'Firebase error'}`, 'error');
+    return false;
   } finally {
-    if (btnSave) {
+    if (btnSave && !silent) {
       btnSave.disabled = false;
       btnSave.textContent = '💾 Save to Archive';
     }
@@ -4792,28 +4871,51 @@ function handleCertCopy() {
   });
 }
 
-// High-Performance Isolated Print / Save as PDF
-function handleCertPrint() {
+// High-Performance Isolated Print / Save as PDF with Option 1: Auto-Save to Backend
+async function handleCertPrint() {
   const sheet = document.getElementById('cert-preview-sheet');
   if (!sheet) {
     window.print();
     return;
   }
 
-  const rawName = document.getElementById('cert-input-name')?.value.trim() || 'Candidate';
-  const refId = document.getElementById('cert-input-ref-id')?.value.trim() || 'REF';
-  const nomenclature = getDocNomenclature(currentCertTemplate, rawName, refId, 'standard');
-  const fileName = getDocNomenclature(currentCertTemplate, rawName, refId, 'filename');
-
-  const prevDocTitle = document.title;
-  document.title = fileName;
+  const rawName = document.getElementById('cert-input-name')?.value.trim();
+  if (!rawName) {
+    showToast('Please enter the Recipient Full Name before issuing/printing.', 'error');
+    document.getElementById('cert-input-name')?.focus();
+    return;
+  }
 
   const btnPrint = document.getElementById('btn-cert-print');
   const originalHtml = btnPrint ? btnPrint.innerHTML : '';
   if (btnPrint) {
     btnPrint.disabled = true;
+    btnPrint.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Saving to Backend...`;
+  }
+
+  // Option 1: Auto-save document directly to Firebase backend on Print
+  try {
+    const saved = await handleCertSave(true);
+    if (!saved) {
+      if (btnPrint) {
+        btnPrint.disabled = false;
+        btnPrint.innerHTML = originalHtml;
+      }
+      return;
+    }
+  } catch (err) {
+    console.warn("Auto-save to Firebase failed during print:", err);
+  }
+
+  if (btnPrint) {
     btnPrint.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Preparing Print...`;
   }
+
+  const refId = document.getElementById('cert-input-ref-id')?.value.trim() || 'REF';
+  const fileName = getDocNomenclature(currentCertTemplate, rawName, refId, 'filename');
+
+  const prevDocTitle = document.title;
+  document.title = fileName;
 
   // Create or reuse hidden iframe to isolate the print job from the heavy admin console DOM
   let printFrame = document.getElementById('cert-print-iframe');
@@ -5107,6 +5209,12 @@ function initCertificatesModule() {
   const btnCopy = document.getElementById('btn-cert-copy');
   if (btnCopy) {
     btnCopy.addEventListener('click', handleCertCopy);
+  }
+
+  // Bind Delete All Archive Button
+  const btnDeleteAll = document.getElementById('btn-cert-delete-all');
+  if (btnDeleteAll) {
+    btnDeleteAll.addEventListener('click', deleteAllIssuedDocsFromFirebase);
   }
 
   // Bind Ref ID Refresh Button

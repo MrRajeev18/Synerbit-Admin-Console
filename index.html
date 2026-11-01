@@ -875,21 +875,27 @@ Collaborated with product teams, conducted code reviews, and mentored junior eng
 
             <!-- Archive of Issued Documents -->
             <div style="margin-top: 36px;" id="cert-archive-section">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">Previously Issued Documents</h3>
-                <span id="cert-archive-count" class="badge cyan">0 Records</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">Previously Issued Documents</h3>
+                  <span id="cert-archive-count" class="badge cyan">0 Records</span>
+                </div>
+                <button type="button" id="btn-cert-delete-all" class="btn-table-action" style="color: #ef4444; border-color: #fecaca; background: #fff5f5; font-size: 0.72rem; padding: 5px 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span>Delete All from Backend</span>
+                </button>
               </div>
 
               <div class="table-container">
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 18%;">Ref Number</th>
-                      <th style="width: 20%;">Recipient Name</th>
-                      <th style="width: 20%;">Document Type</th>
-                      <th style="width: 20%;">Designation</th>
+                      <th style="width: 16%;">Ref Number</th>
+                      <th style="width: 22%;">Recipient &amp; Nomenclature</th>
+                      <th style="width: 18%;">Document Type</th>
+                      <th style="width: 18%;">Designation &amp; Details</th>
                       <th style="width: 12%;">Issue Date</th>
-                      <th style="width: 10%; text-align: right;">Actions</th>
+                      <th style="width: 14%; text-align: right;">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="cert-archive-table-body">
