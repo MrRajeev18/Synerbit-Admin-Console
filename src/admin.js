@@ -4840,6 +4840,11 @@ function handleCertPrint() {
     headStyles += el.outerHTML + '\n';
   });
 
+  // Prepare clean HTML without preview-only divider indicators
+  const clone = sheet.cloneNode(true);
+  clone.querySelectorAll('.a4-page-break-indicator').forEach(el => el.remove());
+  const printContentHtml = clone.innerHTML;
+
   frameDoc.write(`
     <!DOCTYPE html>
     <html lang="en">
@@ -4850,7 +4855,7 @@ function handleCertPrint() {
         <style>
           @page {
             size: A4 portrait;
-            margin: 8mm 10mm;
+            margin: 0;
           }
           * {
             box-sizing: border-box;
@@ -4879,27 +4884,48 @@ function handleCertPrint() {
             flex-direction: column !important;
             justify-content: space-between !important;
             width: 100% !important;
-            max-width: 100% !important;
+            max-width: 210mm !important;
             box-shadow: none !important;
             border: none !important;
-            margin: 0 !important;
-            padding: 6mm 8mm !important;
+            margin: 0 auto !important;
+            padding: 7mm 12mm 5mm 12mm !important;
             background: #ffffff !important;
-            height: 275mm !important;
-            min-height: 275mm !important;
-            max-height: 275mm !important;
+            height: 272mm !important;
+            min-height: 272mm !important;
+            max-height: 272mm !important;
             box-sizing: border-box !important;
-            page-break-after: always !important;
-            break-after: page !important;
-          }
-          .a4-page:last-child,
-          .cert-sheet:last-child {
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
             page-break-after: auto !important;
             break-after: auto !important;
           }
+          .a4-page + .a4-page,
+          .cert-sheet + .cert-sheet {
+            page-break-before: always !important;
+            break-before: page !important;
+          }
+          .a4-page-content {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+          }
+          .a4-page-footer-zone {
+            flex-shrink: 0 !important;
+            margin-top: auto !important;
+          }
           .cert-frame {
-            height: 265mm !important;
-            min-height: 265mm !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            height: 258mm !important;
+            min-height: 258mm !important;
+            max-height: 258mm !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            border: 5px double #0284c7 !important;
+            padding: 20px 24px !important;
           }
           .letter-header,
           .letter-running-header,
@@ -4912,7 +4938,7 @@ function handleCertPrint() {
       </head>
       <body>
         <div class="cert-print-container">
-          ${sheet.innerHTML}
+          ${printContentHtml}
         </div>
       </body>
     </html>

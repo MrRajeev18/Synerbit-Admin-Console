@@ -2358,14 +2358,14 @@ tr.row-selected td {
 }
 
 .a4-page-content {
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
 }
 
 .a4-page-footer-zone {
   flex-shrink: 0;
-  margin-top: 14px;
+  margin-top: auto;
 }
 
 .a4-doc-footer {
@@ -2655,7 +2655,7 @@ tr.row-selected td {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm 12mm;
+    margin: 0;
   }
   
   html, body {
@@ -2713,25 +2713,38 @@ tr.row-selected td {
     flex-direction: column !important;
     justify-content: space-between !important;
     width: 100% !important;
-    max-width: 100% !important;
+    max-width: 210mm !important;
     box-shadow: none !important;
     border: none !important;
-    margin: 0 !important;
-    padding: 6mm 8mm !important;
+    margin: 0 auto !important;
+    padding: 7mm 12mm 5mm 12mm !important;
     box-sizing: border-box !important;
-    height: 275mm !important;
-    min-height: 275mm !important;
-    max-height: 275mm !important;
-    overflow: visible !important;
-    page-break-after: always !important;
-    break-after: page !important;
+    height: 272mm !important;
+    min-height: 272mm !important;
+    max-height: 272mm !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
     background: #ffffff !important;
   }
 
-  .a4-page:last-child,
-  .cert-sheet:last-child {
-    page-break-after: auto !important;
-    break-after: auto !important;
+  .a4-page + .a4-page,
+  .cert-sheet + .cert-sheet {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .a4-page-content {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .a4-page-footer-zone {
+    flex-shrink: 0 !important;
+    margin-top: auto !important;
   }
 
   /* Specific handling for single-page Certificate */
@@ -2739,13 +2752,14 @@ tr.row-selected td {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    min-height: 255mm !important;
-    max-height: 270mm !important;
+    height: 258mm !important;
+    min-height: 258mm !important;
+    max-height: 258mm !important;
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     border: 5px double #0284c7 !important;
-    padding: 24px 28px !important;
+    padding: 20px 24px !important;
   }
 
   /* Prevent awkward splits across pages */
