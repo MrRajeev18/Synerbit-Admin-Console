@@ -4012,7 +4012,7 @@ function renderCertPreview() {
           <div style="font-size: 0.79rem; color: #334155; line-height: 1.48; margin-bottom: 10px;">
             <p style="margin: 0 0 5px 0;">Dear <strong>${name}</strong>,</p>
             <p style="margin: 0;">
-              On behalf of <strong>Synerbit OPC Private Limited</strong>, we are delighted to extend this formal offer of internship for the position of <strong>${escapeHtml(role)}</strong> within our <strong>${escapeHtml(dept)}</strong> team. Following our assessment of your technical capabilities and problem-solving skills, we are excited to have you contribute to our upcoming engineering releases.
+              On behalf of <strong>Synerbit OPC Private Limited</strong>, we are delighted to extend this formal offer of internship for the position of <strong>${escapeHtml(role)}</strong> within our <strong>${escapeHtml(dept)}</strong> team. Following our assessment of your technical capabilities and problem-solving skills, we are excited to have you contribute to our Upcoming Projects.
             </p>
           </div>
 
