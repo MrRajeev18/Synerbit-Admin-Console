@@ -11,7 +11,7 @@ const getLocal = (_key, fallback = []) => fallback;
 const setLocal = () => {};
 
 // Purge any legacy business data cached in localStorage
-['synerbit_applications', 'synerbit_deleted_applications', 'synerbit_ideas', 'synerbit_contacts', 'synerbit_products', 'synerbit_jobs', 'synerbit_team'].forEach(k => {
+['synerbit_applications', 'synerbit_deleted_applications', 'synerbit_ideas', 'synerbit_contacts', 'synerbit_products', 'synerbit_jobs', 'synerbit_team', 'synerbit_issued_docs'].forEach(k => {
   try { localStorage.removeItem(k); } catch (_) {}
 });
 
@@ -35,7 +35,8 @@ const PERMANENT_SUPER_ADMINS = [
       applications: true,
       ideas: true,
       contacts: true,
-      team: true
+      team: true,
+      certificates: true
     },
     createdAt: new Date("2026-01-01").toISOString()
   },
@@ -51,7 +52,8 @@ const PERMANENT_SUPER_ADMINS = [
       applications: true,
       ideas: true,
       contacts: true,
-      team: true
+      team: true,
+      certificates: true
     },
     createdAt: new Date("2026-01-01").toISOString()
   }
@@ -152,7 +154,8 @@ const VIEW_META = {
   applications: { title: 'Job Applications Inbox', desc: 'Review candidates who applied on the careers page.' },
   ideas: { title: 'SaaS Concept Pitches', desc: 'Submissions received from synerbit.in/submit-idea.html' },
   contacts: { title: 'Contact Messages', desc: 'Inquiries sent via contact buttons and forms.' },
-  team: { title: 'Team & Role Permissions', desc: 'Grant or restrict module-level permissions for console users.' }
+  team: { title: 'Team & Role Permissions', desc: 'Grant or restrict module-level permissions for console users.' },
+  certificates: { title: 'Certificates & Letters', desc: 'Generate, preview, and print official offer letters and completion certificates.' }
 };
 
 /* ==========================================================================
@@ -611,14 +614,18 @@ function enforcePermissions() {
   const tabContacts = document.getElementById('tab-btn-contacts');
   const teamSection = document.getElementById('section-admin-only');
   const tabTeam = document.getElementById('tab-btn-team');
+  const tabCertificates = document.getElementById('tab-btn-certificates');
 
   if (tabProducts) tabProducts.style.display = hasPermission('products') ? 'flex' : 'none';
   if (tabJobs) tabJobs.style.display = hasPermission('jobs') ? 'flex' : 'none';
   if (tabApps) tabApps.style.display = hasPermission('applications') ? 'flex' : 'none';
   if (tabIdeas) tabIdeas.style.display = hasPermission('ideas') ? 'flex' : 'none';
   if (tabContacts) tabContacts.style.display = hasPermission('contacts') ? 'flex' : 'none';
-  if (tabTeam) tabTeam.style.display = (hasPermission('team') || isSuper) ? 'flex' : 'none';
-  if (teamSection) teamSection.style.display = (hasPermission('team') || isSuper) ? 'block' : 'none';
+  const canSeeCertificates = hasPermission('certificates') || isSuper;
+  const canSeeTeam = hasPermission('team') || isSuper;
+  if (tabCertificates) tabCertificates.style.display = canSeeCertificates ? 'flex' : 'none';
+  if (tabTeam) tabTeam.style.display = canSeeTeam ? 'flex' : 'none';
+  if (teamSection) teamSection.style.display = (canSeeCertificates || canSeeTeam) ? 'block' : 'none';
 
   // Dashboard KPI cards
   const kpiProducts = document.getElementById('kpi-card-products');
@@ -809,7 +816,7 @@ function setupRealtimeListeners(db) {
             } else {
               foundAdmin.isSuperAdmin = true;
               foundAdmin.role = 'Super Admin';
-              foundAdmin.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+              foundAdmin.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, certificates: true, team: true };
             }
           }
 
@@ -880,6 +887,8 @@ function updateAllUIPanels() {
   renderIdeasTable();
   renderContactsTable();
   renderTeamTable();
+  if (typeof populateCertCandidateDropdown === 'function') populateCertCandidateDropdown();
+  if (typeof renderCertArchiveTable === 'function') renderCertArchiveTable();
 }
 
 async function loadAllData() {
@@ -1044,7 +1053,7 @@ async function loadAllData() {
           } else {
             found.isSuperAdmin = true;
             found.role = 'Super Admin';
-            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, certificates: true, team: true };
           }
         }
 
@@ -3148,9 +3157,10 @@ function renderTeamTable() {
       if (p.applications) activePerms.push('Applications');
       if (p.ideas) activePerms.push('Ideas');
       if (p.contacts) activePerms.push('Contacts');
+      if (p.certificates) activePerms.push('Certificates');
       if (p.team) activePerms.push('Team & Roles');
 
-      if (activePerms.length === 6) {
+      if (activePerms.length === 7) {
         permsContent = `
           <div class="perm-chips-wrap">
             <span class="perm-chip-all" title="Full unrestricted access to all console modules">
@@ -3253,6 +3263,9 @@ document.getElementById('btn-open-add-member').addEventListener('click', () => {
   if (pwdHint) {
     pwdHint.textContent = 'Member will use this email & password to sign in to the Console.';
   }
+  if (document.getElementById('perm-certificates')) {
+    document.getElementById('perm-certificates').checked = false;
+  }
   if (document.getElementById('perm-team')) {
     document.getElementById('perm-team').checked = false;
   }
@@ -3300,6 +3313,7 @@ document.getElementById('team-form').addEventListener('submit', async (e) => {
       applications: document.getElementById('perm-applications').checked,
       ideas: document.getElementById('perm-ideas').checked,
       contacts: document.getElementById('perm-contacts').checked,
+      certificates: document.getElementById('perm-certificates') ? document.getElementById('perm-certificates').checked : false,
       team: document.getElementById('perm-team') ? document.getElementById('perm-team').checked : false
     },
     updatedAt: new Date().toISOString()
@@ -3397,6 +3411,9 @@ window.editMember = (id) => {
   document.getElementById('perm-applications').checked = !!p.applications;
   document.getElementById('perm-ideas').checked = !!p.ideas;
   document.getElementById('perm-contacts').checked = !!p.contacts;
+  if (document.getElementById('perm-certificates')) {
+    document.getElementById('perm-certificates').checked = !!(p.certificates || m.isSuperAdmin);
+  }
   if (document.getElementById('perm-team')) {
     document.getElementById('perm-team').checked = !!(p.team || m.isSuperAdmin);
   }
@@ -3475,7 +3492,7 @@ if (btnSyncTeam) {
           } else {
             found.isSuperAdmin = true;
             found.role = 'Super Admin';
-            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, team: true };
+            found.permissions = { products: true, jobs: true, applications: true, ideas: true, contacts: true, certificates: true, team: true };
           }
         }
 
@@ -3551,3 +3568,1566 @@ if (syncBtn) {
 
 // Bootstrap Console
 initAuth();
+
+/* ==========================================================================
+   CERTIFICATES & FORMAL LETTERS GENERATOR MODULE
+   ========================================================================== */
+
+let currentCertTemplate = 'intern_offer';
+let issuedDocumentsList = [];
+let activeEditingDocId = null;
+let refIdValidationTimeout = null;
+
+// Firebase Firestore helper
+async function getFirestoreDb() {
+  const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  return getFirestore(app);
+}
+
+// Date formatter for formal letters (e.g. 1st November 2026)
+function formatCertDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const nth = (day > 3 && day < 21) ? 'th' : (['th', 'st', 'nd', 'rd', 'th'][Math.min(day % 10, 4)]);
+      return `${day}${nth} ${months[monthIdx]} ${year}`;
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const day = d.getDate();
+      const month = d.toLocaleDateString('en-US', { month: 'long' });
+      const year = d.getFullYear();
+      const nth = (day > 3 && day < 21) ? 'th' : (['th', 'st', 'nd', 'rd', 'th'][Math.min(day % 10, 4)]);
+      return `${day}${nth} ${month} ${year}`;
+    }
+    return dateStr;
+  } catch (_) {
+    return dateStr;
+  }
+}
+
+// Check if a document reference ID already exists in Firebase
+async function checkDocRefIdExistsInFirebase(refId, excludeDocId = null) {
+  if (!refId || !refId.trim()) return false;
+  const cleanRef = refId.trim().toUpperCase();
+  try {
+    const db = await getFirestoreDb();
+    const { collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const q = query(collection(db, "issued_documents"), where("refId", "==", cleanRef));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      return issuedDocumentsList.some(d => (d.refId || '').trim().toUpperCase() === cleanRef && d.id !== excludeDocId);
+    }
+    if (excludeDocId) {
+      return snap.docs.some(d => d.id !== excludeDocId);
+    }
+    return true;
+  } catch (err) {
+    console.warn("Could not query Firebase for refId uniqueness, checking cache:", err);
+    return issuedDocumentsList.some(d => (d.refId || '').trim().toUpperCase() === cleanRef && d.id !== excludeDocId);
+  }
+}
+
+// Generate unique Ref ID by pre-fetching existing IDs from Firebase to guarantee non-collision
+async function generateUniqueDocRefId(template) {
+  const year = new Date().getFullYear();
+  let prefix = 'SYN-DOC';
+  if (template === 'intern_offer') prefix = 'SYN-INT';
+  else if (template === 'fulltime_offer') prefix = 'SYN-FTE';
+  else if (template === 'intern_completion') prefix = 'SYN-CERT';
+  else if (template === 'relieving_letter') prefix = 'SYN-REL';
+
+  // Fetch all existing reference IDs directly from Firebase Firestore backend
+  const existingRefIds = new Set();
+  try {
+    const db = await getFirestoreDb();
+    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const snap = await getDocs(collection(db, "issued_documents"));
+    snap.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data && data.refId) {
+        existingRefIds.add(data.refId.trim().toUpperCase());
+      }
+    });
+  } catch (err) {
+    console.warn("Could not fetch documents from Firebase, using memory list:", err);
+    issuedDocumentsList.forEach(d => {
+      if (d && d.refId) existingRefIds.add(d.refId.trim().toUpperCase());
+    });
+  }
+
+  // Calculate next sequential integer starting at 1001 for this year and prefix
+  let maxSeq = 1000;
+  existingRefIds.forEach(id => {
+    const parts = id.split('-');
+    if (parts.length >= 4) {
+      const idPrefix = `${parts[0]}-${parts[1]}`;
+      const idYear = parts[2];
+      const idSeq = parseInt(parts[3], 10);
+      if (idPrefix === prefix && idYear === String(year) && !isNaN(idSeq)) {
+        if (idSeq > maxSeq) maxSeq = idSeq;
+      }
+    }
+  });
+
+  let nextSeq = maxSeq + 1;
+  let candidateId = `${prefix}-${year}-${nextSeq}`;
+
+  // Loop to verify it strictly does NOT exist in existingRefIds
+  while (existingRefIds.has(candidateId.toUpperCase())) {
+    nextSeq++;
+    candidateId = `${prefix}-${year}-${nextSeq}`;
+  }
+
+  return candidateId;
+}
+
+// Live debounced Ref ID validation badge update
+async function updateRefIdValidationBadge(refId) {
+  const badge = document.getElementById('cert-ref-status');
+  if (!badge) return;
+
+  if (!refId || !refId.trim()) {
+    badge.className = 'badge gray';
+    badge.textContent = '— Ref ID Required';
+    return;
+  }
+
+  badge.className = 'badge blue';
+  badge.textContent = '⏳ Checking Firebase...';
+
+  clearTimeout(refIdValidationTimeout);
+  refIdValidationTimeout = setTimeout(async () => {
+    const exists = await checkDocRefIdExistsInFirebase(refId, activeEditingDocId);
+    if (exists) {
+      badge.className = 'badge red';
+      badge.textContent = '⚠️ Already Exists in Firebase';
+      badge.title = 'This Document Reference ID is already in use in Firebase.';
+    } else {
+      badge.className = 'badge emerald';
+      badge.textContent = '✓ Verified Unique in Firebase';
+      badge.title = 'Confirmed unique! This ID does not exist in Firebase.';
+    }
+  }, 350);
+}
+
+// Populate the Quick Auto-fill Dropdown from Candidate Applications
+function populateCertCandidateDropdown() {
+  const select = document.getElementById('cert-autofill-app');
+  if (!select) return;
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Select candidate application to auto-fill...</option>';
+
+  if (Array.isArray(currentApplications) && currentApplications.length > 0) {
+    currentApplications.forEach(app => {
+      const opt = document.createElement('option');
+      opt.value = app.id;
+      const appName = app.name || app.fullName || 'Candidate';
+      const appRole = app.jobTitle || app.role || 'Applicant';
+      opt.textContent = `${appName} — ${appRole} (${app.email || 'No email'})`;
+      select.appendChild(opt);
+    });
+  }
+  if (currentVal) select.value = currentVal;
+}
+
+// Update field visibility and labels based on active template
+function updateCertTemplateFields(template) {
+  currentCertTemplate = template;
+
+  const badge = document.getElementById('cert-template-badge');
+  const groupDeadline = document.getElementById('group-cert-deadline');
+  const groupDuration = document.getElementById('group-cert-duration');
+  const groupEndDate = document.getElementById('group-cert-end-date');
+  const groupStipend = document.getElementById('group-cert-stipend');
+  const groupRating = document.getElementById('group-cert-rating');
+  const groupContributions = document.getElementById('group-cert-contributions');
+  const groupResponsibilities = document.getElementById('group-cert-responsibilities');
+  const groupExperienceWork = document.getElementById('group-cert-experience-work');
+  const labelJoining = document.getElementById('label-cert-joining-date');
+  const labelStipend = document.getElementById('label-cert-stipend');
+  const inputStipend = document.getElementById('cert-input-stipend');
+
+  if (badge) {
+    const titles = {
+      intern_offer: 'Intern Offer',
+      fulltime_offer: 'Full-Time Offer',
+      intern_completion: 'Internship Certificate',
+      relieving_letter: 'Relieving & Experience'
+    };
+    badge.textContent = titles[template] || 'Document';
+  }
+
+  if (template === 'intern_offer') {
+    if (groupDeadline) groupDeadline.style.display = 'block';
+    if (groupDuration) groupDuration.style.display = 'block';
+    if (groupEndDate) groupEndDate.style.display = 'none';
+    if (groupStipend) groupStipend.style.display = 'block';
+    if (groupRating) groupRating.style.display = 'none';
+    if (groupContributions) groupContributions.style.display = 'none';
+    if (groupResponsibilities) groupResponsibilities.style.display = 'none';
+    if (groupExperienceWork) groupExperienceWork.style.display = 'none';
+    if (labelJoining) labelJoining.textContent = 'Joining / Start Date *';
+    if (labelStipend) labelStipend.textContent = 'Monthly Stipend';
+    if (inputStipend && !inputStipend.value.includes('month')) inputStipend.value = '₹15,000 / month';
+  } else if (template === 'fulltime_offer') {
+    if (groupDeadline) groupDeadline.style.display = 'block';
+    if (groupDuration) groupDuration.style.display = 'none';
+    if (groupEndDate) groupEndDate.style.display = 'none';
+    if (groupStipend) groupStipend.style.display = 'block';
+    if (groupRating) groupRating.style.display = 'none';
+    if (groupContributions) groupContributions.style.display = 'none';
+    if (groupResponsibilities) groupResponsibilities.style.display = 'block';
+    if (groupExperienceWork) groupExperienceWork.style.display = 'none';
+    if (labelJoining) labelJoining.textContent = 'Joining / Start Date *';
+    if (labelStipend) labelStipend.textContent = 'Annual CTC / Compensation';
+    if (inputStipend && (inputStipend.value.includes('month') || !inputStipend.value)) inputStipend.value = '₹8,50,000 Per Annum';
+  } else if (template === 'intern_completion') {
+    if (groupDeadline) groupDeadline.style.display = 'none';
+    if (groupDuration) groupDuration.style.display = 'block';
+    if (groupEndDate) groupEndDate.style.display = 'block';
+    if (groupStipend) groupStipend.style.display = 'none';
+    if (groupRating) groupRating.style.display = 'block';
+    if (groupContributions) groupContributions.style.display = 'block';
+    if (groupResponsibilities) groupResponsibilities.style.display = 'none';
+    if (groupExperienceWork) groupExperienceWork.style.display = 'none';
+    if (labelJoining) labelJoining.textContent = 'Internship Start Date *';
+  } else if (template === 'relieving_letter') {
+    if (groupDeadline) groupDeadline.style.display = 'none';
+    if (groupDuration) groupDuration.style.display = 'none';
+    if (groupEndDate) groupEndDate.style.display = 'block';
+    if (groupStipend) groupStipend.style.display = 'none';
+    if (groupRating) groupRating.style.display = 'none';
+    if (groupContributions) groupContributions.style.display = 'none';
+    if (groupResponsibilities) groupResponsibilities.style.display = 'none';
+    if (groupExperienceWork) groupExperienceWork.style.display = 'block';
+    if (labelJoining) labelJoining.textContent = 'Employment Start Date *';
+  }
+
+  // Manage visibility and context-aware title of the Scope & Deliverables Section
+  const sectionScope = document.getElementById('section-cert-scope');
+  const titleScope = document.getElementById('title-cert-scope');
+  if (sectionScope) {
+    if (template === 'intern_offer') {
+      sectionScope.style.display = 'none';
+    } else {
+      sectionScope.style.display = 'block';
+      if (titleScope) {
+        if (template === 'fulltime_offer') titleScope.textContent = 'Key Roles & Responsibilities';
+        else if (template === 'intern_completion') titleScope.textContent = 'Contributions & Evaluation Remarks';
+        else if (template === 'relieving_letter') titleScope.textContent = 'Scope of Work & Projects Delivered';
+      }
+    }
+  }
+
+  // Update Reference ID with unique ID from Firebase
+  const refInput = document.getElementById('cert-input-ref-id');
+  if (refInput && (!refInput.value || refInput.dataset.autoGenerated === 'true')) {
+    refInput.placeholder = 'Fetching unique ID from Firebase...';
+    generateUniqueDocRefId(template).then(uniqueId => {
+      if (refInput && (!refInput.value || refInput.dataset.autoGenerated === 'true')) {
+        refInput.value = uniqueId;
+        refInput.dataset.autoGenerated = 'true';
+        updateRefIdValidationBadge(uniqueId);
+        renderCertPreview();
+      }
+    });
+  }
+
+  renderCertPreview();
+}
+
+// Standardized Document Nomenclature: [Type of Document] - [Name of Candidate] - [Reference Number]
+function getDocTypeLabel(template) {
+  const map = {
+    intern_offer: 'Internship Offer Letter',
+    fulltime_offer: 'Full-Time Offer Letter',
+    intern_completion: 'Certificate of Completion',
+    relieving_letter: 'Experience cum Relieving Letter'
+  };
+  return map[template] || 'Official Document';
+}
+
+function getDocNomenclature(template, candidateName, refId, format = 'standard') {
+  const typeLabel = getDocTypeLabel(template);
+  const cleanName = (candidateName || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\[\]]/g, '')
+    .replace(/[<>:"/\\|?*]/g, '')
+    .trim() || 'Candidate';
+  const cleanRef = (refId || 'REF')
+    .replace(/[<>:"/\\|?*]/g, '')
+    .trim();
+
+  if (format === 'filename') {
+    const slugType = typeLabel.replace(/[\s\-_]+/g, '_');
+    const slugName = cleanName.replace(/[\s\-_]+/g, '_');
+    const slugRef = cleanRef.replace(/[\s\-_]+/g, '_');
+    return `${slugType}_${slugName}_${slugRef}`;
+  }
+
+  // Standard format: [Type of Document] - [Name of Candidate] - [Reference Number]
+  return `${typeLabel} - ${cleanName} - ${cleanRef}`;
+}
+
+// Render the Live WYSIWYG A4 Preview Sheet
+function renderCertPreview() {
+  const sheet = document.getElementById('cert-preview-sheet');
+  if (!sheet) return;
+
+  const rawName = document.getElementById('cert-input-name')?.value.trim();
+  const name = rawName ? escapeHtml(rawName) : '<span style="color: #94a3b8; font-style: italic;">[Recipient Full Name]</span>';
+  const email = document.getElementById('cert-input-email')?.value.trim() || '';
+  const role = document.getElementById('cert-input-role')?.value.trim() || 'Software Engineer Intern';
+  const dept = document.getElementById('cert-input-dept')?.value.trim() || 'Engineering & Product';
+  const offerDate = document.getElementById('cert-input-offer-date')?.value || '';
+  const joiningDate = document.getElementById('cert-input-joining-date')?.value || '';
+  const deadline = document.getElementById('cert-input-deadline')?.value || '';
+  const duration = document.getElementById('cert-input-duration')?.value.trim() || '3 Months';
+  const endDate = document.getElementById('cert-input-end-date')?.value || '';
+  const stipend = document.getElementById('cert-input-stipend')?.value.trim() || '₹15,000 / month';
+  const location = document.getElementById('cert-input-location')?.value.trim() || 'Ahmedabad, Gujarat / Remote';
+  const manager = document.getElementById('cert-input-manager')?.value.trim() || 'Engineering Lead';
+  const rating = document.getElementById('cert-input-rating')?.value.trim() || 'Outstanding Dedication & Technical Problem Solving';
+  const signatoryName = document.getElementById('cert-input-signatory-name')?.value.trim() || 'Rajeev Ranjan';
+  const signatoryTitle = document.getElementById('cert-input-signatory-title')?.value.trim() || 'Founder & Director, Synerbit OPC Private Limited';
+  
+  const contributionsRaw = document.getElementById('cert-input-contributions')?.value.trim() || '';
+  const contributionList = contributionsRaw.split('\n')
+    .map(l => l.replace(/^[\s•\-\*]+/, '').trim())
+    .filter(Boolean);
+
+  const responsibilitiesRaw = document.getElementById('cert-input-responsibilities')?.value.trim() || '';
+  const responsibilityList = responsibilitiesRaw.split('\n')
+    .map(l => l.replace(/^[\s•\-\*]+/, '').trim())
+    .filter(Boolean);
+
+  const experienceWorkRaw = document.getElementById('cert-input-experience-work')?.value.trim() || '';
+  const experienceWorkList = experienceWorkRaw.split('\n')
+    .map(l => l.replace(/^[\s•\-\*]+/, '').trim())
+    .filter(Boolean);
+
+  let refId = document.getElementById('cert-input-ref-id')?.value.trim() || 'FETCHING-REF-ID';
+
+  const nomenclature = getDocNomenclature(currentCertTemplate, rawName, refId, 'standard');
+  const nomEl = document.getElementById('cert-preview-nomenclature');
+  if (nomEl) {
+    nomEl.textContent = nomenclature;
+  }
+
+  const updatePageBadge = (totalPages) => {
+    const badge = document.getElementById('cert-preview-badge');
+    if (badge) {
+      badge.textContent = totalPages === 1 ? '📄 1 Page A4' : `📄 ${totalPages} Pages A4`;
+    }
+  };
+
+  const corporateHeaderHtml = `
+    <div class="letter-header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="/synerbit-logo.png" alt="Synerbit OPC Private Limited" style="width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.08));" />
+        <div>
+          <div style="font-size: 1.15rem; font-weight: 900; letter-spacing: -0.01em; color: #0f172a; line-height: 1.15;">
+            SYNERBIT OPC <span style="color: #0284c7;">PRIVATE LIMITED</span>
+          </div>
+          <div style="font-size: 0.63rem; color: #0284c7; font-weight: 700; letter-spacing: 0.04em;">
+            Powering Businesses Through Technology &amp; Innovation.
+          </div>
+        </div>
+      </div>
+      <div style="text-align: right; font-size: 0.68rem; color: #475569; line-height: 1.38;">
+        <div><strong>Synerbit OPC Private Limited</strong></div>
+        <div style="font-size: 0.60rem; color: #64748b; font-family: monospace;">CIN: U62099GJ2026OPC184349</div>
+        <div>A606 PNTC, Times of India Press Road, Manekbag</div>
+        <div>Ahmedabad – 380015, Gujarat</div>
+        <div>Web: <span style="color: #0284c7; font-weight: 600;">synerbit.in</span> | Email: contact@synerbit.in</div>
+      </div>
+    </div>
+    <div style="height: 2px; background: linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #e2e8f0 100%); margin: 8px 0 12px 0; border-radius: 2px;"></div>
+  `;
+
+  const runningHeaderHtml = `
+    <div class="letter-running-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1.5px solid #0284c7; margin-bottom: 14px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <img src="/synerbit-logo.png" alt="Synerbit" style="width: 24px; height: 24px; object-fit: contain;" />
+        <span style="font-weight: 800; font-size: 0.82rem; color: #0f172a; letter-spacing: -0.01em;">
+          SYNERBIT OPC <span style="color: #0284c7;">PRIVATE LIMITED</span>
+        </span>
+      </div>
+      <div style="font-size: 0.68rem; color: #64748b; font-family: monospace;">
+        <span>Ref: <strong style="color: #0284c7;">${escapeHtml(refId)}</strong></span> • <span>${escapeHtml(formatCertDate(offerDate))}</span>
+      </div>
+    </div>
+  `;
+
+  const pageBreakIndicatorHtml = (nextPageNum) => `
+    <div class="a4-page-break-indicator">
+      <div class="a4-page-break-line"></div>
+      <div class="a4-page-break-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Page Break • Page ${nextPageNum} Begins Below</span>
+      </div>
+      <div class="a4-page-break-line"></div>
+    </div>
+  `;
+
+  const pageFooterHtml = (pageNum, totalPages) => `
+    <div class="a4-doc-footer">
+      <div>Synerbit OPC Private Limited • CIN: U62099GJ2026OPC184349</div>
+      <div style="font-weight: 600; color: #64748b; font-family: monospace;">${escapeHtml(nomenclature)}</div>
+      <div style="font-weight: 700; color: #64748b;">Page ${pageNum} of ${totalPages}</div>
+    </div>
+  `;
+
+  if (currentCertTemplate === 'intern_offer') {
+    updatePageBadge(1);
+    sheet.innerHTML = `
+      <div class="a4-page cert-sheet">
+        <div class="a4-page-content">
+          ${corporateHeaderHtml}
+          
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; margin-bottom: 11px;">
+            <div><strong>Ref No:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+            <div><strong>Date:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+          </div>
+
+          <div style="margin-bottom: 11px; font-size: 0.81rem; color: #1e293b; line-height: 1.42;">
+            <div><strong>To,</strong></div>
+            <div style="font-size: 0.98rem; font-weight: 800; color: #0f172a; margin: 1px 0;">${name}</div>
+            ${email ? `<div style="color: #64748b; font-size: 0.75rem;">Email: ${escapeHtml(email)}</div>` : ''}
+            <div style="color: #64748b; font-size: 0.75rem;">Location: ${escapeHtml(location)}</div>
+          </div>
+
+          <div style="margin-bottom: 10px; padding: 6px 10px; background: #f0f9ff; border-left: 4px solid #0284c7; border-radius: 0 4px 4px 0; font-size: 0.82rem; font-weight: 800; color: #0369a1; letter-spacing: 0.02em;">
+            SUBJECT: FORMAL OFFER OF INTERNSHIP ENGAGEMENT — ${escapeHtml(role.toUpperCase())}
+          </div>
+
+          <div style="font-size: 0.79rem; color: #334155; line-height: 1.48; margin-bottom: 10px;">
+            <p style="margin: 0 0 5px 0;">Dear <strong>${name}</strong>,</p>
+            <p style="margin: 0;">
+              On behalf of <strong>Synerbit OPC Private Limited</strong>, we are delighted to extend this formal offer of internship for the position of <strong>${escapeHtml(role)}</strong> within our <strong>${escapeHtml(dept)}</strong> team. Following our assessment of your technical capabilities and problem-solving skills, we are excited to have you contribute to our upcoming engineering releases.
+            </p>
+          </div>
+
+          <table class="letter-terms-table" style="margin: 6px 0 10px 0;">
+            <tbody>
+              <tr>
+                <td class="term-label" style="width: 25%; padding: 5px 8px;">Position / Role:</td>
+                <td class="term-val" style="width: 25%; padding: 5px 8px;"><strong>${escapeHtml(role)}</strong></td>
+                <td class="term-label" style="width: 25%; padding: 5px 8px;">Department:</td>
+                <td class="term-val" style="width: 25%; padding: 5px 8px;">${escapeHtml(dept)}</td>
+              </tr>
+              <tr>
+                <td class="term-label" style="padding: 5px 8px;">Commencement Date:</td>
+                <td class="term-val" style="padding: 5px 8px;"><strong style="color: #0284c7;">${escapeHtml(formatCertDate(joiningDate))}</strong></td>
+                <td class="term-label" style="padding: 5px 8px;">Tenure / Duration:</td>
+                <td class="term-val" style="padding: 5px 8px;">${escapeHtml(duration)}</td>
+              </tr>
+              <tr>
+                <td class="term-label" style="padding: 5px 8px;">Monthly Stipend:</td>
+                <td class="term-val" style="padding: 5px 8px;"><strong style="color: #10b981;">${escapeHtml(stipend)}</strong></td>
+                <td class="term-label" style="padding: 5px 8px;">Work Arrangement:</td>
+                <td class="term-val" style="padding: 5px 8px;">${escapeHtml(location)}</td>
+              </tr>
+              <tr>
+                <td class="term-label" style="padding: 5px 8px;">Reporting Lead:</td>
+                <td class="term-val" colspan="3" style="padding: 5px 8px;">${escapeHtml(manager)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="font-size: 0.77rem; color: #334155; line-height: 1.45;">
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 6px 10px; margin-bottom: 8px;">
+              <strong style="color: #b45309;">⚠️ Acceptance Deadline:</strong>
+              <span style="color: #78350f;"> Please sign and return a scanned copy of this letter on or before <strong>${escapeHtml(formatCertDate(deadline))} (5:00 PM IST)</strong>, failing which this offer automatically lapses.</span>
+            </div>
+            <p style="margin: 0 0 4px 0;"><strong>1. Intellectual Property &amp; Confidentiality:</strong> All software source code, system architectures, and designs authored during your engagement belong solely to Synerbit OPC Private Limited. You agree to safeguard proprietary systems and customer data.</p>
+            <p style="margin: 0 0 4px 0;"><strong>2. Termination Notice:</strong> Either party may conclude this engagement with 7 calendar days of written notice.</p>
+            <p style="margin: 0;">We warmly welcome you to the Synerbit team and look forward to building groundbreaking software products together.</p>
+          </div>
+        </div>
+
+        <div class="a4-page-footer-zone">
+          <div class="letter-signoff" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
+            <div style="display: flex; align-items: flex-end; gap: 14px;">
+              <div>
+                <div style="font-size: 0.73rem; color: #64748b; margin-bottom: 12px;">For <strong>Synerbit OPC Private Limited</strong></div>
+                <div style="font-weight: 800; color: #0f172a; font-size: 0.85rem;">${escapeHtml(signatoryName)}</div>
+                <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+                <div style="margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bae6fd; border-radius: 4px; padding: 2px 6px; font-size: 0.62rem; color: #0284c7; background: #f0f9ff; font-weight: 700;">
+                  ✓ Officially Sealed
+                </div>
+              </div>
+              <img src="/synerbit-stamp.png" alt="Company Stamp" style="width: 70px; height: 70px; object-fit: contain; opacity: 0.95; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); margin-bottom: 2px;" />
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.73rem; color: #64748b; margin-bottom: 14px;">Candidate Acceptance Acknowledgement</div>
+              <div style="font-weight: 800; color: #0f172a; font-size: 0.85rem;">${name}</div>
+              <div style="font-size: 0.72rem; color: #64748b;">Signature &amp; Date: ______________________</div>
+            </div>
+          </div>
+          ${pageFooterHtml(1, 1)}
+        </div>
+      </div>
+    `;
+  } else if (currentCertTemplate === 'fulltime_offer') {
+    const isMultiPage = responsibilityList.length > 0;
+    const totalPages = isMultiPage ? 2 : 1;
+    updatePageBadge(totalPages);
+
+    if (isMultiPage) {
+      sheet.innerHTML = `
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${corporateHeaderHtml}
+            
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; margin-bottom: 12px;">
+              <div><strong>Ref No:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+              <div><strong>Date:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+            </div>
+
+            <div style="margin-bottom: 12px; font-size: 0.81rem; color: #1e293b; line-height: 1.45;">
+              <div><strong>To,</strong></div>
+              <div style="font-size: 1.0rem; font-weight: 800; color: #0f172a; margin: 2px 0;">${name}</div>
+              ${email ? `<div style="color: #64748b; font-size: 0.76rem;">Email: ${escapeHtml(email)}</div>` : ''}
+              <div style="color: #64748b; font-size: 0.76rem;">Location: ${escapeHtml(location)}</div>
+            </div>
+
+            <div style="margin-bottom: 11px; padding: 7px 11px; background: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 0 4px 4px 0; font-size: 0.84rem; font-weight: 800; color: #15803d; letter-spacing: 0.02em;">
+              SUBJECT: FORMAL APPOINTMENT LETTER &amp; EMPLOYMENT OFFER — ${escapeHtml(role.toUpperCase())}
+            </div>
+
+            <div style="font-size: 0.80rem; color: #334155; line-height: 1.5; margin-bottom: 11px;">
+              <p style="margin: 0 0 6px 0;">Dear <strong>${name}</strong>,</p>
+              <p style="margin: 0;">
+                On behalf of <strong>Synerbit OPC Private Limited</strong>, we are thrilled to extend a formal offer of permanent employment as <strong>${escapeHtml(role)}</strong> within our <strong>${escapeHtml(dept)}</strong> organization. We were deeply impressed by your expertise, technical mastery, and potential to accelerate our product roadmap.
+              </p>
+            </div>
+
+            <table class="letter-terms-table" style="margin-bottom: 12px;">
+              <tbody>
+                <tr>
+                  <td class="term-label" style="width: 25%; padding: 5px 8px;">Designation:</td>
+                  <td class="term-val" style="width: 25%; padding: 5px 8px;"><strong>${escapeHtml(role)}</strong></td>
+                  <td class="term-label" style="width: 25%; padding: 5px 8px;">Department:</td>
+                  <td class="term-val" style="width: 25%; padding: 5px 8px;">${escapeHtml(dept)}</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Annual CTC / Compensation:</td>
+                  <td class="term-val" style="padding: 5px 8px;"><strong style="color: #16a34a;">${escapeHtml(stipend)}</strong></td>
+                  <td class="term-label" style="padding: 5px 8px;">Probationary Period:</td>
+                  <td class="term-val" style="padding: 5px 8px;">3 Months</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Date of Joining:</td>
+                  <td class="term-val" style="padding: 5px 8px;"><strong style="color: #0284c7;">${escapeHtml(formatCertDate(joiningDate))}</strong></td>
+                  <td class="term-label" style="padding: 5px 8px;">Work Arrangement:</td>
+                  <td class="term-val" style="padding: 5px 8px;">${escapeHtml(location)}</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Reporting Manager:</td>
+                  <td class="term-val" colspan="3" style="padding: 5px 8px;">${escapeHtml(manager)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #16a34a; border-radius: 4px; padding: 9px 13px; font-size: 0.77rem; color: #334155; line-height: 1.48;">
+              <div style="font-weight: 800; color: #0f172a; margin-bottom: 5px; font-size: 0.79rem; display: flex; align-items: center; gap: 6px;">
+                <span>📋</span> Key Roles &amp; Responsibilities:
+              </div>
+              <ul style="margin: 0; padding-left: 18px; list-style-type: disc;">
+                ${responsibilityList.map(r => `<li style="margin-bottom: 4px;">${escapeHtml(r)}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div style="text-align: right; font-size: 0.72rem; color: #64748b; font-style: italic; margin-bottom: 6px;">
+              [Continued on Page 2 for Terms of Employment, Signatures &amp; Acceptance →]
+            </div>
+            ${pageFooterHtml(1, 2)}
+          </div>
+        </div>
+
+        ${pageBreakIndicatorHtml(2)}
+
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${runningHeaderHtml}
+
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #78350f; line-height: 1.45;">
+              <strong style="color: #b45309;">⚠️ Acceptance Deadline:</strong>
+              <span> Please sign and return this appointment letter to <strong>contact@synerbit.in</strong> on or before <strong>${escapeHtml(formatCertDate(deadline))} (5:00 PM IST)</strong>. This offer is contingent upon successful credentials verification.</span>
+            </div>
+
+            <div style="font-size: 0.78rem; color: #334155; line-height: 1.52;">
+              <div style="font-weight: 800; color: #0f172a; margin-bottom: 8px; font-size: 0.82rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+                General Terms &amp; Conditions of Employment:
+              </div>
+              <p style="margin: 0 0 7px 0;"><strong>1. Duties &amp; Code of Conduct:</strong> You shall devotedly serve the company, observing highest workplace standards, ethical integrity, and information security policies.</p>
+              <p style="margin: 0 0 7px 0;"><strong>2. Probation &amp; Notice Period:</strong> Upon completion of probation, either party may terminate employment with 30 calendar days of advance written notice or base salary in lieu thereof.</p>
+              <p style="margin: 0 0 7px 0;"><strong>3. Confidentiality &amp; Intellectual Property:</strong> All software code, system architectures, client data, and inventions authored during employment belong exclusively to Synerbit OPC Private Limited.</p>
+              <p style="margin: 0 0 10px 0;"><strong>4. Governing Law:</strong> This agreement is governed by the laws of India and subject to the exclusive jurisdiction of the courts in Ahmedabad, Gujarat.</p>
+              <p style="margin: 0;">We congratulate you on this milestone and look forward to an enriching journey with Synerbit OPC Private Limited.</p>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div class="letter-signoff" style="margin-top: 14px; display: flex; justify-content: space-between; align-items: flex-end;">
+              <div style="display: flex; align-items: flex-end; gap: 14px;">
+                <div>
+                  <div style="font-size: 0.74rem; color: #64748b; margin-bottom: 14px;">For <strong>Synerbit OPC Private Limited</strong></div>
+                  <div style="font-weight: 800; color: #0f172a; font-size: 0.86rem;">${escapeHtml(signatoryName)}</div>
+                  <div style="font-size: 0.73rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+                  <div style="margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bbf7d0; border-radius: 4px; padding: 2px 6px; font-size: 0.63rem; color: #16a34a; background: #f0fdf4; font-weight: 700;">
+                    ✓ Officially Sealed
+                  </div>
+                </div>
+                <img src="/synerbit-stamp.png" alt="Company Stamp" style="width: 72px; height: 72px; object-fit: contain; opacity: 0.95; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); margin-bottom: 2px;" />
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.74rem; color: #64748b; margin-bottom: 16px;">Candidate Acceptance Acknowledgement</div>
+                <div style="font-weight: 800; color: #0f172a; font-size: 0.86rem;">${name}</div>
+                <div style="font-size: 0.73rem; color: #64748b;">Signature &amp; Date: ______________________</div>
+              </div>
+            </div>
+            ${pageFooterHtml(2, 2)}
+          </div>
+        </div>
+      `;
+    } else {
+      sheet.innerHTML = `
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${corporateHeaderHtml}
+            
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; margin-bottom: 11px;">
+              <div><strong>Ref No:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+              <div><strong>Date:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+            </div>
+
+            <div style="margin-bottom: 11px; font-size: 0.81rem; color: #1e293b; line-height: 1.42;">
+              <div><strong>To,</strong></div>
+              <div style="font-size: 0.98rem; font-weight: 800; color: #0f172a; margin: 1px 0;">${name}</div>
+              ${email ? `<div style="color: #64748b; font-size: 0.75rem;">Email: ${escapeHtml(email)}</div>` : ''}
+              <div style="color: #64748b; font-size: 0.75rem;">Location: ${escapeHtml(location)}</div>
+            </div>
+
+            <div style="margin-bottom: 10px; padding: 6px 10px; background: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 0 4px 4px 0; font-size: 0.82rem; font-weight: 800; color: #15803d; letter-spacing: 0.02em;">
+              SUBJECT: FORMAL APPOINTMENT LETTER &amp; EMPLOYMENT OFFER — ${escapeHtml(role.toUpperCase())}
+            </div>
+
+            <div style="font-size: 0.79rem; color: #334155; line-height: 1.48; margin-bottom: 10px;">
+              <p style="margin: 0 0 5px 0;">Dear <strong>${name}</strong>,</p>
+              <p style="margin: 0;">
+                On behalf of <strong>Synerbit OPC Private Limited</strong>, we are thrilled to extend a formal offer of permanent employment as <strong>${escapeHtml(role)}</strong> within our <strong>${escapeHtml(dept)}</strong> organization. We were deeply impressed by your expertise, technical mastery, and potential to accelerate our product roadmap.
+              </p>
+            </div>
+
+            <table class="letter-terms-table" style="margin: 6px 0 10px 0;">
+              <tbody>
+                <tr>
+                  <td class="term-label" style="width: 25%; padding: 5px 8px;">Designation:</td>
+                  <td class="term-val" style="width: 25%; padding: 5px 8px;"><strong>${escapeHtml(role)}</strong></td>
+                  <td class="term-label" style="width: 25%; padding: 5px 8px;">Department:</td>
+                  <td class="term-val" style="width: 25%; padding: 5px 8px;">${escapeHtml(dept)}</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Annual CTC / Compensation:</td>
+                  <td class="term-val" style="padding: 5px 8px;"><strong style="color: #16a34a;">${escapeHtml(stipend)}</strong></td>
+                  <td class="term-label" style="padding: 5px 8px;">Probationary Period:</td>
+                  <td class="term-val" style="padding: 5px 8px;">3 Months</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Date of Joining:</td>
+                  <td class="term-val" style="padding: 5px 8px;"><strong style="color: #0284c7;">${escapeHtml(formatCertDate(joiningDate))}</strong></td>
+                  <td class="term-label" style="padding: 5px 8px;">Work Arrangement:</td>
+                  <td class="term-val" style="padding: 5px 8px;">${escapeHtml(location)}</td>
+                </tr>
+                <tr>
+                  <td class="term-label" style="padding: 5px 8px;">Reporting Manager:</td>
+                  <td class="term-val" colspan="3" style="padding: 5px 8px;">${escapeHtml(manager)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="font-size: 0.77rem; color: #334155; line-height: 1.45;">
+              <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 6px 10px; margin-bottom: 8px;">
+                <strong style="color: #b45309;">⚠️ Acceptance Deadline:</strong>
+                <span style="color: #78350f;"> Please sign and return this appointment letter to <strong>contact@synerbit.in</strong> on or before <strong>${escapeHtml(formatCertDate(deadline))} (5:00 PM IST)</strong>. This offer is contingent upon successful credentials verification.</span>
+              </div>
+              <p style="margin: 0 0 4px 0;"><strong>1. Duties &amp; Code of Conduct:</strong> You shall devotedly serve the company, observing workplace standards and information security agreements.</p>
+              <p style="margin: 0 0 4px 0;"><strong>2. Notice Period:</strong> Upon completion of probation, either party may terminate employment with 30 calendar days of advance written notice or base salary in lieu thereof.</p>
+              <p style="margin: 0;">We congratulate you on this milestone and look forward to an enriching journey with Synerbit OPC Private Limited.</p>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div class="letter-signoff" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
+              <div style="display: flex; align-items: flex-end; gap: 14px;">
+                <div>
+                  <div style="font-size: 0.73rem; color: #64748b; margin-bottom: 12px;">For <strong>Synerbit OPC Private Limited</strong></div>
+                  <div style="font-weight: 800; color: #0f172a; font-size: 0.85rem;">${escapeHtml(signatoryName)}</div>
+                  <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+                  <div style="margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bbf7d0; border-radius: 4px; padding: 2px 6px; font-size: 0.62rem; color: #16a34a; background: #f0fdf4; font-weight: 700;">
+                    ✓ Officially Sealed
+                  </div>
+                </div>
+                <img src="/synerbit-stamp.png" alt="Company Stamp" style="width: 70px; height: 70px; object-fit: contain; opacity: 0.95; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); margin-bottom: 2px;" />
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.73rem; color: #64748b; margin-bottom: 14px;">Candidate Acceptance Acknowledgement</div>
+                <div style="font-weight: 800; color: #0f172a; font-size: 0.85rem;">${name}</div>
+                <div style="font-size: 0.72rem; color: #64748b;">Signature &amp; Date: ______________________</div>
+              </div>
+            </div>
+            ${pageFooterHtml(1, 1)}
+          </div>
+        </div>
+      `;
+    }
+  } else if (currentCertTemplate === 'intern_completion') {
+    updatePageBadge(1);
+    sheet.innerHTML = `
+      <div class="a4-page cert-sheet">
+        <div class="cert-frame">
+          <div class="cert-corner-decor cert-corner-tl"></div>
+          <div class="cert-corner-decor cert-corner-tr"></div>
+          <div class="cert-corner-decor cert-corner-bl"></div>
+          <div class="cert-corner-decor cert-corner-br"></div>
+
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 4px;">
+            <img src="/synerbit-logo.png" alt="Synerbit OPC Private Limited" style="width: 52px; height: 52px; object-fit: contain; margin-bottom: 6px; filter: drop-shadow(0 3px 8px rgba(2, 132, 199, 0.2));" />
+            <div style="font-size: 1.3rem; font-weight: 900; letter-spacing: 0.06em; color: #0f172a; text-transform: uppercase;">
+              SYNERBIT OPC PRIVATE LIMITED
+            </div>
+            <div style="font-size: 0.68rem; letter-spacing: 0.04em; color: #0284c7; margin-top: 3px; font-weight: 700;">
+              Powering Businesses Through Technology &amp; Innovation.
+            </div>
+          </div>
+
+          <h1 style="font-size: 1.75rem; font-weight: 900; color: #0284c7; letter-spacing: 0.05em; margin: 8px 0 10px 0; text-transform: uppercase;">
+            Certificate of Completion
+          </h1>
+
+          <p style="font-size: 0.84rem; color: #64748b; font-style: italic; margin-bottom: 6px;">
+            This is proudly presented to
+          </p>
+
+          <div style="font-size: 1.85rem; font-weight: 900; color: #0f172a; margin: 4px 0 12px 0; border-bottom: 2px solid #38bdf8; display: inline-block; padding-bottom: 3px;">
+            ${name}
+          </div>
+
+          <div style="font-size: 0.84rem; color: #334155; max-width: 600px; margin: 0 auto 12px auto; line-height: 1.55;">
+            in recognition of their successful completion of the formal <strong>${escapeHtml(duration)}</strong> internship as <strong>${escapeHtml(role)}</strong> within the <strong>${escapeHtml(dept)}</strong> division at Synerbit OPC Private Limited from <strong>${escapeHtml(formatCertDate(joiningDate))}</strong> to <strong>${escapeHtml(formatCertDate(endDate))}</strong>.
+          </div>
+
+          ${contributionList.length > 0 ? `
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 8px 18px; max-width: 580px; margin: 0 auto 10px auto; font-size: 0.77rem; color: #334155; line-height: 1.45; text-align: left;">
+              <div style="font-weight: 800; color: #0284c7; margin-bottom: 4px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">
+                Key Contributions &amp; Projects Delivered
+              </div>
+              <ul style="margin: 0; padding-left: 18px; list-style-type: disc;">
+                ${contributionList.map(item => `<li style="margin-bottom: 3px;">${escapeHtml(item)}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+
+          <div style="font-size: 0.76rem; color: #475569; max-width: 580px; margin: 0 auto 12px auto; line-height: 1.5; text-align: center;">
+            During their tenure, <em>${name}</em> exhibited <strong>${escapeHtml(rating)}</strong>, contributing meaningfully to key software releases while displaying high integrity and teamwork.
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px; padding: 0 14px;">
+            <div style="text-align: left; font-size: 0.70rem; color: #64748b; line-height: 1.38; max-width: 290px;">
+              <div><strong>Certificate ID:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+              <div><strong>CIN:</strong> <span style="font-family: monospace; font-size: 0.65rem;">U62099GJ2026OPC184349</span></div>
+              <div><strong>Date of Issue:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+              <div>A606 PNTC, Times of India Press Road, Manekbag, Ahmedabad – 380015, Gujarat</div>
+              <div style="color: #0284c7; margin-top: 2px; font-weight: 600;">Verification: https://synerbit.in/verify</div>
+            </div>
+            
+            <div style="text-align: center;">
+              <img src="/synerbit-stamp.png" alt="Synerbit OPC Private Limited Official Stamp" style="width: 86px; height: 86px; object-fit: contain; margin: 0 auto; display: block; filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.08)); transform: rotate(-3deg);" />
+            </div>
+
+            <div style="text-align: right;">
+              <div style="font-weight: 800; color: #0f172a; font-size: 0.86rem;">${escapeHtml(signatoryName)}</div>
+              <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">Synerbit OPC Private Limited</div>
+            </div>
+          </div>
+        </div>
+        ${pageFooterHtml(1, 1)}
+      </div>
+    `;
+  } else if (currentCertTemplate === 'relieving_letter') {
+    const isMultiPage = experienceWorkList.length > 0;
+    const totalPages = isMultiPage ? 2 : 1;
+    updatePageBadge(totalPages);
+
+    if (isMultiPage) {
+      sheet.innerHTML = `
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${corporateHeaderHtml}
+            
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; margin-bottom: 12px;">
+              <div><strong>Ref No:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+              <div><strong>Date:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+            </div>
+
+            <div style="margin-bottom: 12px; font-size: 0.81rem; color: #1e293b; line-height: 1.45;">
+              <div><strong>To,</strong></div>
+              <div style="font-size: 1.0rem; font-weight: 800; color: #0f172a; margin: 2px 0;">${name}</div>
+              ${email ? `<div style="color: #64748b; font-size: 0.76rem;">Email: ${escapeHtml(email)}</div>` : ''}
+              <div style="color: #64748b; font-size: 0.76rem;">Location: ${escapeHtml(location)}</div>
+            </div>
+
+            <div style="margin-bottom: 12px; padding: 7px 11px; background: #f8fafc; border-left: 4px solid #0284c7; border-radius: 0 4px 4px 0; font-size: 0.84rem; font-weight: 800; color: #0f172a; letter-spacing: 0.02em;">
+              SUBJECT: EXPERIENCE CUM RELIEVING LETTER — ${escapeHtml(role.toUpperCase())}
+            </div>
+
+            <div style="font-size: 0.81rem; color: #334155; line-height: 1.55; margin-bottom: 12px;">
+              <p style="margin: 0 0 7px 0; font-weight: 700; color: #0f172a;">TO WHOMSOEVER IT MAY CONCERN</p>
+              <p style="margin: 0 0 7px 0;">
+                This is to certify that <strong>${name}</strong> was employed with <strong>Synerbit OPC Private Limited</strong> as <strong>${escapeHtml(role)}</strong> in our <strong>${escapeHtml(dept)}</strong> department from <strong>${escapeHtml(formatCertDate(joiningDate))}</strong> to <strong>${escapeHtml(formatCertDate(endDate))}</strong>.
+              </p>
+              <p style="margin: 0;">
+                During their tenure with us, <strong>${name}</strong> handled their professional duties and technical responsibilities with commendable dedication, diligence, and expertise. Their work ethic and conduct with peers, clients, and management have been exemplary.
+              </p>
+            </div>
+
+            <div style="margin-top: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #0284c7; border-radius: 4px; padding: 9px 13px; font-size: 0.77rem; color: #334155; line-height: 1.48;">
+              <div style="font-weight: 800; color: #0f172a; margin-bottom: 5px; font-size: 0.79rem; display: flex; align-items: center; gap: 6px;">
+                <span>💼</span> Key Scope of Work &amp; Projects Delivered:
+              </div>
+              <ul style="margin: 0; padding-left: 18px; list-style-type: disc;">
+                ${experienceWorkList.map(item => `<li style="margin-bottom: 4px;">${escapeHtml(item)}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div style="text-align: right; font-size: 0.72rem; color: #64748b; font-style: italic; margin-bottom: 6px;">
+              [Continued on Page 2 for Relieving Certification &amp; Signatures →]
+            </div>
+            ${pageFooterHtml(1, 2)}
+          </div>
+        </div>
+
+        ${pageBreakIndicatorHtml(2)}
+
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${runningHeaderHtml}
+
+            <div style="font-size: 0.81rem; color: #334155; line-height: 1.58; margin-top: 6px;">
+              <div style="font-weight: 800; color: #0f172a; margin-bottom: 8px; font-size: 0.82rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+                Formal Relieving Confirmation &amp; Settlement:
+              </div>
+              <p style="margin: 0 0 8px 0;">
+                This is to formally confirm that <strong>${name}</strong> is relieved of all organizational responsibilities and employment obligations with Synerbit OPC Private Limited effective close of business hours on <strong>${escapeHtml(formatCertDate(endDate))}</strong>.
+              </p>
+              <p style="margin: 0 0 8px 0;">
+                There are no outstanding liabilities, financial dues, or company property pending on their part. All assigned intellectual assets, software repositories, and company credentials have been formally transitioned.
+              </p>
+              <p style="margin: 0;">
+                We take this opportunity to thank <strong>${name}</strong> for their valuable contributions and exemplary work ethic during their tenure. We wish them grand success and personal fulfillment in all their future career pursuits.
+              </p>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div class="letter-signoff" style="margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end;">
+              <div style="display: flex; align-items: flex-end; gap: 14px;">
+                <div>
+                  <div style="font-size: 0.74rem; color: #64748b; margin-bottom: 14px;">For <strong>Synerbit OPC Private Limited</strong></div>
+                  <div style="font-weight: 800; color: #0f172a; font-size: 0.86rem;">${escapeHtml(signatoryName)}</div>
+                  <div style="font-size: 0.73rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+                  <div style="margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bae6fd; border-radius: 4px; padding: 2px 6px; font-size: 0.63rem; color: #0284c7; background: #f0f9ff; font-weight: 700;">
+                    ✓ Officially Sealed
+                  </div>
+                </div>
+                <img src="/synerbit-stamp.png" alt="Company Stamp" style="width: 72px; height: 72px; object-fit: contain; opacity: 0.95; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); margin-bottom: 2px;" />
+              </div>
+              <div style="text-align: right; font-size: 0.70rem; color: #64748b; line-height: 1.38;">
+                <div><strong>Synerbit OPC Private Limited</strong></div>
+                <div style="font-size: 0.60rem; color: #64748b; font-family: monospace;">CIN: U62099GJ2026OPC184349</div>
+                <div>A606 PNTC, Times of India Press Road, Manekbag</div>
+                <div>Ahmedabad – 380015, Gujarat</div>
+                <div style="color: #0284c7; font-weight: 600;">contact@synerbit.in</div>
+              </div>
+            </div>
+            ${pageFooterHtml(2, 2)}
+          </div>
+        </div>
+      `;
+    } else {
+      sheet.innerHTML = `
+        <div class="a4-page cert-sheet">
+          <div class="a4-page-content">
+            ${corporateHeaderHtml}
+            
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; margin-bottom: 11px;">
+              <div><strong>Ref No:</strong> <span style="font-family: monospace; color: #0284c7; font-weight: 700;">${escapeHtml(refId)}</span></div>
+              <div><strong>Date:</strong> ${escapeHtml(formatCertDate(offerDate))}</div>
+            </div>
+
+            <div style="margin-bottom: 11px; font-size: 0.81rem; color: #1e293b; line-height: 1.42;">
+              <div><strong>To,</strong></div>
+              <div style="font-size: 0.98rem; font-weight: 800; color: #0f172a; margin: 1px 0;">${name}</div>
+              ${email ? `<div style="color: #64748b; font-size: 0.75rem;">Email: ${escapeHtml(email)}</div>` : ''}
+              <div style="color: #64748b; font-size: 0.75rem;">Location: ${escapeHtml(location)}</div>
+            </div>
+
+            <div style="margin-bottom: 10px; padding: 6px 10px; background: #f8fafc; border-left: 4px solid #0284c7; border-radius: 0 4px 4px 0; font-size: 0.82rem; font-weight: 800; color: #0f172a; letter-spacing: 0.02em;">
+              SUBJECT: EXPERIENCE CUM RELIEVING LETTER — ${escapeHtml(role.toUpperCase())}
+            </div>
+
+            <div style="font-size: 0.79rem; color: #334155; line-height: 1.48; margin-bottom: 10px;">
+              <p style="margin: 0 0 5px 0; font-weight: 700; color: #0f172a;">TO WHOMSOEVER IT MAY CONCERN</p>
+              <p style="margin: 0 0 5px 0;">
+                This is to certify that <strong>${name}</strong> was employed with <strong>Synerbit OPC Private Limited</strong> as <strong>${escapeHtml(role)}</strong> in our <strong>${escapeHtml(dept)}</strong> department from <strong>${escapeHtml(formatCertDate(joiningDate))}</strong> to <strong>${escapeHtml(formatCertDate(endDate))}</strong>.
+              </p>
+              <p style="margin: 0 0 5px 0;">
+                During their tenure with us, <strong>${name}</strong> handled their professional duties and technical responsibilities with commendable dedication, diligence, and expertise. Their work ethic and conduct with peers, clients, and management have been exemplary.
+              </p>
+              <p style="margin: 0 0 5px 0;">
+                <strong>${name}</strong> is relieved of all organizational responsibilities and employment obligations effective close of business hours on <strong>${escapeHtml(formatCertDate(endDate))}</strong>. There are no outstanding liabilities, financial dues, or company assets pending on their part.
+              </p>
+              <p style="margin: 0;">
+                We take this opportunity to thank <strong>${name}</strong> for their valuable contributions to Synerbit OPC Private Limited and wish them continued success in all their future career pursuits.
+              </p>
+            </div>
+          </div>
+
+          <div class="a4-page-footer-zone">
+            <div class="letter-signoff" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
+              <div style="display: flex; align-items: flex-end; gap: 14px;">
+                <div>
+                  <div style="font-size: 0.73rem; color: #64748b; margin-bottom: 12px;">For <strong>Synerbit OPC Private Limited</strong></div>
+                  <div style="font-weight: 800; color: #0f172a; font-size: 0.85rem;">${escapeHtml(signatoryName)}</div>
+                  <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(signatoryTitle)}</div>
+                  <div style="margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #bae6fd; border-radius: 4px; padding: 2px 6px; font-size: 0.62rem; color: #0284c7; background: #f0f9ff; font-weight: 700;">
+                    ✓ Officially Sealed
+                  </div>
+                </div>
+                <img src="/synerbit-stamp.png" alt="Company Stamp" style="width: 70px; height: 70px; object-fit: contain; opacity: 0.95; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); margin-bottom: 2px;" />
+              </div>
+              <div style="text-align: right; font-size: 0.69rem; color: #64748b; line-height: 1.35;">
+                <div><strong>Synerbit OPC Private Limited</strong></div>
+                <div style="font-size: 0.58rem; color: #64748b; font-family: monospace;">CIN: U62099GJ2026OPC184349</div>
+                <div>A606 PNTC, Times of India Press Road, Manekbag</div>
+                <div>Ahmedabad – 380015, Gujarat</div>
+                <div style="color: #0284c7; font-weight: 600;">contact@synerbit.in</div>
+              </div>
+            </div>
+            ${pageFooterHtml(1, 1)}
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
+// Strictly fetch and load issued documents directly from Firebase Firestore
+async function loadIssuedDocumentsFromFirebase() {
+  const tbody = document.getElementById('cert-archive-table-body');
+  const countBadge = document.getElementById('cert-archive-count');
+
+  if (tbody && issuedDocumentsList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 24px 16px;">
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #0284c7; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+        <span>Loading issued documents directly from Firebase backend...</span>
+      </div>
+    </td></tr>`;
+  }
+
+  try {
+    const db = await getFirestoreDb();
+    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const snap = await getDocs(collection(db, "issued_documents"));
+    const docs = [];
+    snap.forEach(d => {
+      docs.push({ id: d.id, ...d.data() });
+    });
+
+    docs.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+    issuedDocumentsList = docs;
+  } catch (err) {
+    console.error("Failed to load issued documents from Firebase:", err);
+  }
+
+  renderCertArchiveTable();
+}
+
+// Render the Archive of Previously Issued Documents
+function renderCertArchiveTable() {
+  const tbody = document.getElementById('cert-archive-table-body');
+  const countBadge = document.getElementById('cert-archive-count');
+  if (!tbody) return;
+
+  if (countBadge) countBadge.textContent = `${issuedDocumentsList.length} Records`;
+
+  if (issuedDocumentsList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">No documents issued yet. Select a template and create your first official certificate or letter above.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = issuedDocumentsList.map(doc => {
+    const typeBadges = {
+      intern_offer: '<span class="badge cyan">Intern Offer</span>',
+      fulltime_offer: '<span class="badge emerald">Full-Time Offer</span>',
+      intern_completion: '<span class="badge purple">Certificate</span>',
+      relieving_letter: '<span class="badge amber">Relieving</span>'
+    };
+    const nomenclature = doc.nomenclature || getDocNomenclature(doc.template, doc.name, doc.refId, 'standard');
+    return `
+      <tr>
+        <td style="font-family: monospace; font-weight: 700; color: #0284c7;">${escapeHtml(doc.refId || '—')}</td>
+        <td>
+          <div style="font-weight: 700; color: #0f172a;">${escapeHtml(doc.name || '—')}</div>
+          <div style="font-size: 0.69rem; color: #0284c7; font-family: var(--font-mono); font-weight: 600; margin-top: 2px;">
+            ${escapeHtml(nomenclature)}
+          </div>
+        </td>
+        <td>${typeBadges[doc.template] || '<span class="badge gray">Document</span>'}</td>
+        <td style="color: #475569;">${escapeHtml(doc.role || '—')}</td>
+        <td style="color: #64748b; font-size: 0.75rem;">${escapeHtml(formatCertDate(doc.offerDate))}</td>
+        <td style="text-align: right;">
+          <div style="display: inline-flex; gap: 6px;">
+            <button class="btn-table-action" onclick="loadIssuedDocToEditor('${escapeHtml(doc.id)}')" title="Load into Editor">✏️ Edit</button>
+            <button class="btn-table-action" onclick="deleteIssuedDoc('${escapeHtml(doc.id)}')" title="Delete from Firebase Archive" style="color: #ef4444;">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Load a saved document back into the active editor form
+window.loadIssuedDocToEditor = function(docId) {
+  const item = issuedDocumentsList.find(d => d.id === docId);
+  if (!item) return;
+
+  activeEditingDocId = item.id;
+
+  const btnPill = document.querySelector(`.cert-pill-btn[data-template="${item.template}"]`);
+  if (btnPill) {
+    document.querySelectorAll('.cert-pill-btn').forEach(b => b.classList.remove('active'));
+    btnPill.classList.add('active');
+  }
+
+  if (document.getElementById('cert-input-name')) document.getElementById('cert-input-name').value = item.name || '';
+  if (document.getElementById('cert-input-email')) document.getElementById('cert-input-email').value = item.email || '';
+  if (document.getElementById('cert-input-role')) document.getElementById('cert-input-role').value = item.role || '';
+  if (document.getElementById('cert-input-dept')) document.getElementById('cert-input-dept').value = item.dept || 'Engineering & Product';
+  if (document.getElementById('cert-input-offer-date')) document.getElementById('cert-input-offer-date').value = item.offerDate || '';
+  if (document.getElementById('cert-input-joining-date')) document.getElementById('cert-input-joining-date').value = item.joiningDate || '';
+  if (document.getElementById('cert-input-deadline')) document.getElementById('cert-input-deadline').value = item.deadline || '';
+  if (document.getElementById('cert-input-duration')) document.getElementById('cert-input-duration').value = item.duration || '3 Months';
+  if (document.getElementById('cert-input-end-date')) document.getElementById('cert-input-end-date').value = item.endDate || '';
+  if (document.getElementById('cert-input-stipend')) document.getElementById('cert-input-stipend').value = item.stipend || '';
+  if (document.getElementById('cert-input-location')) document.getElementById('cert-input-location').value = item.location || 'Ahmedabad, Gujarat / Remote';
+  if (document.getElementById('cert-input-manager')) document.getElementById('cert-input-manager').value = item.manager || 'Engineering Lead';
+  if (document.getElementById('cert-input-rating')) document.getElementById('cert-input-rating').value = item.rating || '';
+  if (document.getElementById('cert-input-contributions')) document.getElementById('cert-input-contributions').value = item.contributions || '';
+  if (document.getElementById('cert-input-responsibilities')) document.getElementById('cert-input-responsibilities').value = item.responsibilities || '';
+  if (document.getElementById('cert-input-experience-work')) document.getElementById('cert-input-experience-work').value = item.experienceWork || '';
+  if (document.getElementById('cert-input-signatory-name')) document.getElementById('cert-input-signatory-name').value = item.signatoryName || 'Rajeev Ranjan';
+  if (document.getElementById('cert-input-signatory-title')) document.getElementById('cert-input-signatory-title').value = item.signatoryTitle || 'Founder & Director, Synerbit OPC Private Limited';
+  if (document.getElementById('cert-input-ref-id')) {
+    const refEl = document.getElementById('cert-input-ref-id');
+    refEl.value = item.refId || '';
+    refEl.dataset.autoGenerated = 'false';
+  }
+
+  updateCertTemplateFields(item.template);
+  updateRefIdValidationBadge(item.refId);
+  showToast(`Loaded document ${item.refId} into editor`, 'success');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// Permanently delete a document directly from the Firebase archive
+window.deleteIssuedDoc = async function(docId) {
+  if (!confirm('Are you sure you want to permanently delete this document from Firebase?')) return;
+  try {
+    const db = await getFirestoreDb();
+    const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    await deleteDoc(doc(db, "issued_documents", docId));
+    showToast('Document deleted from Firebase archive', 'info');
+    await loadIssuedDocumentsFromFirebase();
+  } catch (err) {
+    console.error("Failed to delete document from Firebase:", err);
+    showToast(`Error deleting document: ${err.message}`, 'error');
+  }
+};
+
+// Save active document directly to Firebase backend
+async function handleCertSave() {
+  const btnSave = document.getElementById('btn-cert-save');
+  if (btnSave) {
+    btnSave.disabled = true;
+    btnSave.textContent = 'Saving to Firebase...';
+  }
+
+  try {
+    const nameInput = document.getElementById('cert-input-name');
+    const name = nameInput?.value.trim();
+    if (!name) {
+      showToast('Please enter the Recipient Full Name before saving.', 'error');
+      nameInput?.focus();
+      return;
+    }
+
+    const refIdInput = document.getElementById('cert-input-ref-id');
+    let refId = refIdInput?.value.trim();
+    if (!refId) {
+      refId = await generateUniqueDocRefId(currentCertTemplate);
+      if (refIdInput) refIdInput.value = refId;
+    }
+
+    // Pre-flight check: Verify uniqueness in Firebase backend before committing
+    const isDuplicate = await checkDocRefIdExistsInFirebase(refId, activeEditingDocId);
+    if (isDuplicate) {
+      showToast(`Reference ID "${refId}" already exists in Firebase! Generating a new unique ID...`, 'error');
+      refId = await generateUniqueDocRefId(currentCertTemplate);
+      if (refIdInput) {
+        refIdInput.value = refId;
+        updateRefIdValidationBadge(refId);
+      }
+      renderCertPreview();
+    }
+
+    const email = document.getElementById('cert-input-email')?.value.trim() || '';
+    const role = document.getElementById('cert-input-role')?.value.trim() || 'Software Engineer Intern';
+    const dept = document.getElementById('cert-input-dept')?.value.trim() || 'Engineering & Product';
+    const offerDate = document.getElementById('cert-input-offer-date')?.value || '';
+    const joiningDate = document.getElementById('cert-input-joining-date')?.value || '';
+    const deadline = document.getElementById('cert-input-deadline')?.value || '';
+    const duration = document.getElementById('cert-input-duration')?.value.trim() || '3 Months';
+    const endDate = document.getElementById('cert-input-end-date')?.value || '';
+    const stipend = document.getElementById('cert-input-stipend')?.value.trim() || '';
+    const location = document.getElementById('cert-input-location')?.value.trim() || '';
+    const manager = document.getElementById('cert-input-manager')?.value.trim() || '';
+    const rating = document.getElementById('cert-input-rating')?.value.trim() || '';
+    const contributions = document.getElementById('cert-input-contributions')?.value.trim() || '';
+    const responsibilities = document.getElementById('cert-input-responsibilities')?.value.trim() || '';
+    const experienceWork = document.getElementById('cert-input-experience-work')?.value.trim() || '';
+    const signatoryName = document.getElementById('cert-input-signatory-name')?.value.trim() || 'Rajeev Ranjan';
+    const signatoryTitle = document.getElementById('cert-input-signatory-title')?.value.trim() || 'Founder & Director, Synerbit OPC Private Limited';
+
+    const docId = activeEditingDocId || `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const nomenclature = getDocNomenclature(currentCertTemplate, name, refId, 'standard');
+    const fileName = `${getDocNomenclature(currentCertTemplate, name, refId, 'filename')}.pdf`;
+
+    const docRecord = {
+      id: docId,
+      refId,
+      template: currentCertTemplate,
+      nomenclature,
+      fileName,
+      name,
+      email,
+      role,
+      dept,
+      offerDate,
+      joiningDate,
+      deadline,
+      duration,
+      endDate,
+      stipend,
+      location,
+      manager,
+      rating,
+      contributions,
+      responsibilities,
+      experienceWork,
+      signatoryName,
+      signatoryTitle,
+      updatedAt: new Date().toISOString()
+    };
+    if (!activeEditingDocId) {
+      docRecord.createdAt = new Date().toISOString();
+    }
+
+    // Direct write to Firebase Firestore collection "issued_documents"
+    const db = await getFirestoreDb();
+    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    await setDoc(doc(db, "issued_documents", docRecord.id), docRecord, { merge: true });
+
+    showToast(`Document ${nomenclature} successfully saved to Firebase!`, 'success');
+    activeEditingDocId = null;
+
+    // Reload archive directly from Firebase
+    await loadIssuedDocumentsFromFirebase();
+  } catch (err) {
+    console.error("Failed to save document to Firebase:", err);
+    showToast(`Failed to save document: ${err.message || 'Firebase error'}`, 'error');
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.textContent = '💾 Save to Archive';
+    }
+  }
+}
+
+// Copy Document Text to Clipboard
+function handleCertCopy() {
+  const sheet = document.getElementById('cert-preview-sheet');
+  if (!sheet) return;
+  const text = sheet.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Document text copied to clipboard!', 'success');
+  }).catch(() => {
+    showToast('Failed to copy text', 'error');
+  });
+}
+
+// High-Performance Isolated Print / Save as PDF
+function handleCertPrint() {
+  const sheet = document.getElementById('cert-preview-sheet');
+  if (!sheet) {
+    window.print();
+    return;
+  }
+
+  const rawName = document.getElementById('cert-input-name')?.value.trim() || 'Candidate';
+  const refId = document.getElementById('cert-input-ref-id')?.value.trim() || 'REF';
+  const nomenclature = getDocNomenclature(currentCertTemplate, rawName, refId, 'standard');
+  const fileName = getDocNomenclature(currentCertTemplate, rawName, refId, 'filename');
+
+  const prevDocTitle = document.title;
+  document.title = fileName;
+
+  const btnPrint = document.getElementById('btn-cert-print');
+  const originalHtml = btnPrint ? btnPrint.innerHTML : '';
+  if (btnPrint) {
+    btnPrint.disabled = true;
+    btnPrint.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Preparing Print...`;
+  }
+
+  // Create or reuse hidden iframe to isolate the print job from the heavy admin console DOM
+  let printFrame = document.getElementById('cert-print-iframe');
+  if (!printFrame) {
+    printFrame = document.createElement('iframe');
+    printFrame.id = 'cert-print-iframe';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = 'none';
+    printFrame.style.opacity = '0';
+    printFrame.style.pointerEvents = 'none';
+    document.body.appendChild(printFrame);
+  }
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+
+  // Inherit all stylesheet tags and fonts from parent
+  let headStyles = '';
+  document.querySelectorAll('link[rel="stylesheet"], style').forEach(el => {
+    headStyles += el.outerHTML + '\n';
+  });
+
+  frameDoc.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>${escapeHtml(fileName)}</title>
+        ${headStyles}
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          .cert-print-container {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .a4-page-break-indicator {
+            display: none !important;
+          }
+          .a4-page,
+          .cert-sheet {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 6mm 8mm !important;
+            background: #ffffff !important;
+            height: 275mm !important;
+            min-height: 275mm !important;
+            max-height: 275mm !important;
+            box-sizing: border-box !important;
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+          .a4-page:last-child,
+          .cert-sheet:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+          .cert-frame {
+            height: 265mm !important;
+            min-height: 265mm !important;
+          }
+          .letter-header,
+          .letter-running-header,
+          .letter-terms-table,
+          .letter-signoff {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="cert-print-container">
+          ${sheet.innerHTML}
+        </div>
+      </body>
+    </html>
+  `);
+  frameDoc.close();
+
+  const resetBtn = () => {
+    if (btnPrint) {
+      btnPrint.disabled = false;
+      btnPrint.innerHTML = originalHtml;
+    }
+  };
+
+  const firePrint = () => {
+    setTimeout(() => {
+      resetBtn();
+      try {
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+      } catch (err) {
+        console.warn('Iframe print failed, falling back to window.print():', err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          document.title = prevDocTitle;
+        }, 1500);
+      }
+    }, 40);
+  };
+
+  // Wait for images inside iframe to be ready before opening the print preview dialog
+  const images = frameDoc.images;
+  if (!images || images.length === 0) {
+    firePrint();
+  } else {
+    let pending = images.length;
+    let done = false;
+    const onImg = () => {
+      if (done) return;
+      pending--;
+      if (pending <= 0) {
+        done = true;
+        firePrint();
+      }
+    };
+    for (let i = 0; i < images.length; i++) {
+      if (images[i].complete) {
+        onImg();
+      } else {
+        images[i].onload = onImg;
+        images[i].onerror = onImg;
+      }
+    }
+    // Fallback timer if browser already has images in cache
+    setTimeout(() => {
+      if (!done) {
+        done = true;
+        firePrint();
+      }
+    }, 250);
+  }
+}
+
+// Master Initializer for Certificates & Letters
+function initCertificatesModule() {
+  // Set default dates
+  const today = new Date();
+  const formatYMD = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const offerDateEl = document.getElementById('cert-input-offer-date');
+  if (offerDateEl && !offerDateEl.value) {
+    offerDateEl.value = formatYMD(today);
+  }
+
+  const joinDate = new Date(today);
+  joinDate.setDate(joinDate.getDate() + 14);
+  const joinDateEl = document.getElementById('cert-input-joining-date');
+  if (joinDateEl && !joinDateEl.value) {
+    joinDateEl.value = formatYMD(joinDate);
+  }
+
+  const deadlineDate = new Date(today);
+  deadlineDate.setDate(deadlineDate.getDate() + 7);
+  const deadlineEl = document.getElementById('cert-input-deadline');
+  if (deadlineEl && !deadlineEl.value) {
+    deadlineEl.value = formatYMD(deadlineDate);
+  }
+
+  const endDate = new Date(joinDate);
+  endDate.setDate(endDate.getDate() + 90);
+  const endDateEl = document.getElementById('cert-input-end-date');
+  if (endDateEl && !endDateEl.value) {
+    endDateEl.value = formatYMD(endDate);
+  }
+
+  // Bind Template Pills
+  document.querySelectorAll('.cert-pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cert-pill-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const template = btn.dataset.template;
+      updateCertTemplateFields(template);
+    });
+  });
+
+  // Bind Live Input Change Listeners
+  const inputIds = [
+    'cert-input-name', 'cert-input-email', 'cert-input-role', 'cert-input-dept',
+    'cert-input-offer-date', 'cert-input-joining-date', 'cert-input-deadline',
+    'cert-input-duration', 'cert-input-end-date', 'cert-input-stipend',
+    'cert-input-location', 'cert-input-manager', 'cert-input-rating',
+    'cert-input-contributions', 'cert-input-responsibilities', 'cert-input-experience-work',
+    'cert-input-signatory-name', 'cert-input-signatory-title', 'cert-input-ref-id'
+  ];
+
+  inputIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        if (id === 'cert-input-ref-id') el.dataset.autoGenerated = 'false';
+        renderCertPreview();
+      });
+      el.addEventListener('change', renderCertPreview);
+    }
+  });
+
+  // Bind Quick Auto-Fill from Candidate Applications
+  const autofillSelect = document.getElementById('cert-autofill-app');
+  if (autofillSelect) {
+    autofillSelect.addEventListener('change', () => {
+      const appId = autofillSelect.value;
+      if (!appId) return;
+      const app = currentApplications.find(a => a.id === appId);
+      if (app) {
+        if (document.getElementById('cert-input-name')) {
+          document.getElementById('cert-input-name').value = app.name || app.fullName || '';
+        }
+        if (document.getElementById('cert-input-email')) {
+          document.getElementById('cert-input-email').value = app.email || '';
+        }
+        if (document.getElementById('cert-input-role')) {
+          document.getElementById('cert-input-role').value = app.jobTitle || app.role || 'Software Engineer Intern';
+        }
+        renderCertPreview();
+        showToast(`Auto-filled details for ${app.name || 'Candidate'}`, 'success');
+      }
+    });
+  }
+
+  // Bind Action Buttons
+  const btnPrint = document.getElementById('btn-cert-print');
+  if (btnPrint) {
+    btnPrint.addEventListener('click', handleCertPrint);
+  }
+
+  const btnSave = document.getElementById('btn-cert-save');
+  if (btnSave) {
+    btnSave.addEventListener('click', handleCertSave);
+  }
+
+  const btnCopy = document.getElementById('btn-cert-copy');
+  if (btnCopy) {
+    btnCopy.addEventListener('click', handleCertCopy);
+  }
+
+  // Bind Ref ID Refresh Button
+  const btnGenRef = document.getElementById('btn-cert-gen-ref');
+  if (btnGenRef) {
+    btnGenRef.addEventListener('click', async () => {
+      activeEditingDocId = null;
+      const refInput = document.getElementById('cert-input-ref-id');
+      const badge = document.getElementById('cert-ref-status');
+      if (badge) {
+        badge.className = 'badge blue';
+        badge.textContent = '⏳ Checking Firebase...';
+      }
+      const newRef = await generateUniqueDocRefId(currentCertTemplate);
+      if (refInput) {
+        refInput.value = newRef;
+        refInput.dataset.autoGenerated = 'true';
+      }
+      if (badge) {
+        badge.className = 'badge emerald';
+        badge.textContent = '✓ Verified Unique in Firebase';
+      }
+      renderCertPreview();
+      showToast(`Generated unique ID from Firebase: ${newRef}`, 'success');
+    });
+  }
+
+  // Bind Ref ID manual typing validation
+  const refInput = document.getElementById('cert-input-ref-id');
+  if (refInput) {
+    refInput.addEventListener('input', () => {
+      updateRefIdValidationBadge(refInput.value);
+    });
+    refInput.addEventListener('blur', () => {
+      updateRefIdValidationBadge(refInput.value);
+    });
+  }
+
+  // Initial field configuration & fetch live records from Firebase backend
+  updateCertTemplateFields('intern_offer');
+  populateCertCandidateDropdown();
+  loadIssuedDocumentsFromFirebase();
+}
+
+// Initialize on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initCertificatesModule);
+} else {
+  initCertificatesModule();
+}

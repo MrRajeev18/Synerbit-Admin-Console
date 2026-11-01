@@ -120,7 +120,12 @@
             <span class="nav-pill-badge" id="badge-contacts-count">0</span>
           </button>
 
-          <div class="nav-section-title" id="section-admin-only">GOVERNANCE</div>
+          <div class="nav-section-title" id="section-admin-only">GOVERNANCE &amp; OPERATIONS</div>
+
+          <button class="nav-tab" data-tab="certificates" id="tab-btn-certificates">
+            <span class="tab-icon">📜</span>
+            <span>Certificates &amp; Letters</span>
+          </button>
 
           <button class="nav-tab" data-tab="team" id="tab-btn-team">
             <span class="tab-icon">👥</span>
@@ -618,6 +623,283 @@
             </div>
           </section>
 
+          <!-- 8. CERTIFICATES & OFFER LETTERS GENERATOR -->
+          <section id="panel-certificates" class="content-panel">
+            <div class="panel-toolbar" style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;">
+              <button class="btn-primary-action" id="btn-cert-print">
+                🖨️ Print / Save as PDF
+              </button>
+              <button class="btn-table-action" id="btn-cert-save" style="padding: 7px 14px; font-weight: 600;">
+                💾 Save to Archive
+              </button>
+              <button class="btn-table-action" id="btn-cert-copy" style="padding: 7px 14px; font-weight: 600;">
+                📋 Copy Text
+              </button>
+            </div>
+
+            <!-- Template Selector Pills -->
+            <div class="cert-template-nav">
+              <button class="cert-pill-btn active" data-template="intern_offer">
+                🎓 Intern Offer Letter
+              </button>
+              <button class="cert-pill-btn" data-template="fulltime_offer">
+                💼 Full-Time Offer Letter
+              </button>
+              <button class="cert-pill-btn" data-template="intern_completion">
+                🏆 Internship Certificate
+              </button>
+              <button class="cert-pill-btn" data-template="relieving_letter">
+                📄 Relieving &amp; Experience
+              </button>
+            </div>
+
+            <!-- Generator Split-Screen Workspace -->
+            <div class="cert-workspace-grid">
+              
+              <!-- LEFT: Input Parameters Form -->
+              <div class="cert-form-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                  <div>
+                    <h3 style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin: 0 0 2px 0;">Document Parameters</h3>
+                    <div style="font-size: 0.70rem; color: #64748b;">Configure issuance parameters for the selected template</div>
+                  </div>
+                  <span id="cert-template-badge" class="badge cyan" style="font-size: 0.72rem; padding: 4px 10px;">Intern Offer</span>
+                </div>
+
+                <!-- 1-Click Auto-Fill from Applications -->
+                <div class="cert-autofill-banner">
+                  <div class="cert-autofill-header">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 0.88rem;">⚡</span>
+                      <span style="font-size: 0.73rem; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.03em;">Quick Auto-Fill Candidate</span>
+                    </div>
+                    <span style="font-size: 0.68rem; color: #0284c7; font-weight: 500;">From Job Applications</span>
+                  </div>
+                  <select id="cert-autofill-app" class="form-select cert-autofill-select">
+                    <option value="">Select candidate application to auto-populate fields...</option>
+                  </select>
+                </div>
+
+                <!-- SECTION 1: Recipient Information -->
+                <div class="cert-param-section">
+                  <div class="cert-param-section-title">
+                    <span>👤</span>
+                    <span>Recipient Information</span>
+                  </div>
+                  <div class="cert-param-grid">
+                    <div class="form-group">
+                      <label class="form-label">Recipient Full Name *</label>
+                      <input type="text" id="cert-input-name" class="form-input" placeholder="e.g. Rahul Sharma" value="" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Recipient Email</label>
+                      <input type="email" id="cert-input-email" class="form-input" placeholder="e.g. rahul.sharma@example.com" value="" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SECTION 2: Position & Engagement -->
+                <div class="cert-param-section">
+                  <div class="cert-param-section-title">
+                    <span>💼</span>
+                    <span>Position &amp; Engagement</span>
+                  </div>
+                  <div class="cert-param-grid">
+                    <div class="form-group">
+                      <label class="form-label">Designation / Role Title *</label>
+                      <input type="text" id="cert-input-role" class="form-input" placeholder="e.g. Software Engineer Intern" value="Software Engineer Intern" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Department</label>
+                      <input type="text" id="cert-input-dept" class="form-input" value="Engineering &amp; Product" />
+                    </div>
+                    <div class="form-group" id="group-cert-location">
+                      <label class="form-label">Work Mode &amp; Location</label>
+                      <input type="text" id="cert-input-location" class="form-input" value="Ahmedabad, Gujarat / Remote" />
+                    </div>
+                    <div class="form-group" id="group-cert-manager">
+                      <label class="form-label">Reporting Manager / Mentor</label>
+                      <input type="text" id="cert-input-manager" class="form-input" value="Engineering Lead" />
+                    </div>
+                    <div class="form-group col-span-2" id="group-cert-stipend">
+                      <label class="form-label" id="label-cert-stipend">Monthly Stipend</label>
+                      <input type="text" id="cert-input-stipend" class="form-input" value="₹15,000 / month" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SECTION 3: Timeline & Schedule -->
+                <div class="cert-param-section">
+                  <div class="cert-param-section-title">
+                    <span>📅</span>
+                    <span>Timeline &amp; Schedule</span>
+                  </div>
+                  <div class="cert-param-grid">
+                    <div class="form-group">
+                      <label class="form-label">Offer / Issue Date *</label>
+                      <input type="date" id="cert-input-offer-date" class="form-input" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="label-cert-joining-date">Joining / Start Date *</label>
+                      <input type="date" id="cert-input-joining-date" class="form-input" />
+                    </div>
+                    <div class="form-group" id="group-cert-duration">
+                      <label class="form-label">Tenure / Duration</label>
+                      <input type="text" id="cert-input-duration" class="form-input" value="3 Months" />
+                    </div>
+                    <div class="form-group" id="group-cert-deadline">
+                      <label class="form-label" style="color: #b45309; font-weight: 700;">Acceptance Deadline *</label>
+                      <input type="date" id="cert-input-deadline" class="form-input" style="border-color: #fde68a;" />
+                    </div>
+                    <div class="form-group col-span-2" id="group-cert-end-date" style="display: none;">
+                      <label class="form-label">Completion / Relieving Date *</label>
+                      <input type="date" id="cert-input-end-date" class="form-input" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SECTION 4: Deliverables & Scope (Dynamic by Template) -->
+                <div class="cert-param-section" id="section-cert-scope" style="display: none;">
+                  <div class="cert-param-section-title">
+                    <span>📝</span>
+                    <span id="title-cert-scope">Deliverables &amp; Work Scope</span>
+                  </div>
+                  <div class="cert-param-grid">
+                    <div class="form-group col-span-2" id="group-cert-rating" style="display: none;">
+                      <label class="form-label">Performance Evaluation &amp; Project Remarks</label>
+                      <input type="text" id="cert-input-rating" class="form-input" value="Outstanding Dedication &amp; Technical Problem Solving" />
+                    </div>
+
+                    <!-- Option for Internship Certificate: Contributions Pointers -->
+                    <div class="form-group col-span-2" id="group-cert-contributions" style="display: none;">
+                      <label class="form-label" style="font-weight: 700; color: #0284c7; display: flex; justify-content: space-between;">
+                        <span>Key Internship Contributions &amp; Projects Delivered</span>
+                        <span style="font-weight: 400; font-size: 0.68rem; color: #64748b;">(1 pointer per line)</span>
+                      </label>
+                      <textarea id="cert-input-contributions" class="form-input" rows="3" style="font-size: 0.78rem; line-height: 1.45; resize: vertical;" placeholder="Add contribution pointers, 1 per line:&#10;• Designed and developed core responsive UI modules&#10;• Built robust RESTful APIs and optimized queries&#10;• Actively participated in sprint cycles and code reviews">Designed and developed core responsive UI modules and frontend dashboards.
+Built robust backend RESTful APIs and optimized database queries.
+Actively participated in sprint cycles, code reviews, and quality testing.</textarea>
+                    </div>
+
+                    <!-- Option for Full-Time Offer Letter: Work Responsibilities -->
+                    <div class="form-group col-span-2" id="group-cert-responsibilities" style="display: none;">
+                      <label class="form-label" style="font-weight: 700; color: #16a34a; display: flex; justify-content: space-between;">
+                        <span>Core Roles &amp; Responsibilities to Work</span>
+                        <span style="font-weight: 400; font-size: 0.68rem; color: #64748b;">(1 responsibility per line)</span>
+                      </label>
+                      <textarea id="cert-input-responsibilities" class="form-input" rows="3" style="font-size: 0.78rem; line-height: 1.45; resize: vertical;" placeholder="Add responsibilities, 1 per line:&#10;• Architect, develop, and maintain scalable web applications&#10;• Collaborate with cross-functional product and engineering teams&#10;• Ensure code quality, system reliability, and test coverage">Architect, develop, and maintain scalable web applications and microservices.
+Collaborate with product and design teams to deliver high-impact user experiences.
+Ensure high performance, system reliability, and comprehensive test coverage.
+Participate in technical architecture reviews and mentor junior engineers.</textarea>
+                    </div>
+
+                    <!-- Option for Experience Letter: Scope of Work & Projects Handled -->
+                    <div class="form-group col-span-2" id="group-cert-experience-work" style="display: none;">
+                      <label class="form-label" style="font-weight: 700; color: #0284c7; display: flex; justify-content: space-between;">
+                        <span>Key Scope of Work &amp; Projects Delivered</span>
+                        <span style="font-weight: 400; font-size: 0.68rem; color: #64748b;">(1 pointer per line)</span>
+                      </label>
+                      <textarea id="cert-input-experience-work" class="form-input" rows="3" style="font-size: 0.78rem; line-height: 1.45; resize: vertical;" placeholder="Add work pointers, 1 per line:&#10;• Led full-stack engineering initiatives and developed core web features&#10;• Designed and maintained scalable microservices and databases&#10;• Collaborated with product teams and conducted code reviews">Led full-stack engineering initiatives and developed core web platform features.
+Designed and maintained high-performance microservices and cloud databases.
+Collaborated with product teams, conducted code reviews, and mentored junior engineers.</textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SECTION 5: Authorized Signatory -->
+                <div class="cert-param-section">
+                  <div class="cert-param-section-title">
+                    <span>✍️</span>
+                    <span>Authorized Signatory</span>
+                  </div>
+                  <div class="cert-param-grid">
+                    <div class="form-group">
+                      <label class="form-label">Authorized Signatory Name</label>
+                      <input type="text" id="cert-input-signatory-name" class="form-input" value="Rajeev Ranjan" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Signatory Official Title</label>
+                      <input type="text" id="cert-input-signatory-title" class="form-input" value="Founder &amp; Director, Synerbit OPC Private Limited" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SECTION 6: Document Reference ID & Firebase Verification -->
+                <div class="cert-ref-section">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 0.85rem;">🆔</span>
+                      <span style="font-size: 0.74rem; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em;">Document Reference ID</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span id="cert-ref-status" class="badge emerald" style="font-size: 0.65rem;">✓ Verified Unique</span>
+                      <button type="button" id="btn-cert-gen-ref" class="btn-table-action" style="padding: 2px 8px; font-size: 0.70rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>🔄</span> Refresh ID
+                      </button>
+                    </div>
+                  </div>
+                  <input type="text" id="cert-input-ref-id" class="form-input cert-ref-input" placeholder="Fetching unique ID from Firebase..." />
+                  <div style="font-size: 0.68rem; color: #64748b; margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+                    <span>🔒</span> Guaranteed collision-free &amp; verified unique against Firebase backend database.
+                  </div>
+                </div>
+              </div>
+
+              <!-- RIGHT: Live A4 Document Preview -->
+              <div class="cert-preview-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 4px;">
+                  <span style="font-size: 0.76rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Live A4 Printable Sheet Preview</span>
+                  <span id="cert-preview-badge" style="font-size: 0.72rem; color: #0284c7; background: #f0f9ff; border: 1px solid #bae6fd; padding: 2px 8px; border-radius: 4px; font-weight: 700;">📄 1 Page A4</span>
+                </div>
+
+                <!-- Official Document Nomenclature Banner -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; padding: 7px 12px; background: #ffffff; border-radius: 7px; border: 1px solid #cbd5e1; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);">
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 0.70rem; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;">
+                    <span>🏷️</span>
+                    <span>Nomenclature:</span>
+                  </div>
+                  <div id="cert-preview-nomenclature" style="font-family: var(--font-mono); font-size: 0.74rem; font-weight: 700; color: #0284c7; word-break: break-all; text-align: right;">
+                    Internship Offer Letter - [Candidate Name] - FETCHING-REF-ID
+                  </div>
+                </div>
+
+                <!-- Printable Sheet Canvas -->
+                <div id="cert-printable-container" class="cert-sheet-wrapper">
+                  <div id="cert-preview-sheet">
+                    <!-- Populated dynamically via JavaScript -->
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Archive of Issued Documents -->
+            <div style="margin-top: 36px;" id="cert-archive-section">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">Previously Issued Documents</h3>
+                <span id="cert-archive-count" class="badge cyan">0 Records</span>
+              </div>
+
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 18%;">Ref Number</th>
+                      <th style="width: 20%;">Recipient Name</th>
+                      <th style="width: 20%;">Document Type</th>
+                      <th style="width: 20%;">Designation</th>
+                      <th style="width: 12%;">Issue Date</th>
+                      <th style="width: 10%; text-align: right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cert-archive-table-body">
+                    <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">No documents saved to archive yet. Use the generator above to create and save documents.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
         </div>
       </main>
     </div>
@@ -832,6 +1114,10 @@
             <div class="perm-checkbox-item">
               <input type="checkbox" id="perm-contacts" />
               <label for="perm-contacts"><strong>Contact Inquiries</strong> (View Contact Form Submissions)</label>
+            </div>
+            <div class="perm-checkbox-item">
+              <input type="checkbox" id="perm-certificates" />
+              <label for="perm-certificates"><strong>Certificates &amp; Letters</strong> (Generate &amp; Print Official Letters / Certificates)</label>
             </div>
             <div class="perm-checkbox-item">
               <input type="checkbox" id="perm-team" />
