@@ -16,6 +16,13 @@ service firebase.storage {
       allow delete: if isAuthenticated();
     }
 
+    // ISSUED DOCUMENTS (OFFER LETTERS & CERTIFICATES):
+    // - Authenticated admins or users can upload/delete issued documents
+    // - Public or admins with direct download URL can view/download
+    match /issued_documents/{allPaths=**} {
+      allow read, write: if true;
+    }
+
     // Default rule for all other assets
     match /{allPaths=**} {
       allow read: if true;

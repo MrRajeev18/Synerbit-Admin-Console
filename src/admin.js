@@ -3618,6 +3618,198 @@ async function getFirestoreDb() {
   return getFirestore(app);
 }
 
+// Firebase Storage helper
+async function getFirebaseStorage() {
+  const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const { getStorage } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  return getStorage(app);
+}
+
+// Compile the standalone, pixel-perfect print document HTML
+function generateFullPrintDocumentHtml(sheet, title) {
+  if (!sheet) return '';
+
+  let headStyles = '';
+  document.querySelectorAll('link[rel="stylesheet"], style').forEach(el => {
+    headStyles += el.outerHTML + '\n';
+  });
+
+  const clone = sheet.cloneNode(true);
+  clone.querySelectorAll('.a4-page-break-indicator').forEach(el => el.remove());
+  const printContentHtml = clone.innerHTML;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHtml(title)}</title>
+    ${headStyles}
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .cert-print-container {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .a4-page-break-indicator {
+        display: none !important;
+      }
+      .a4-page,
+      .cert-sheet {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        max-width: 210mm !important;
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 auto !important;
+        padding: 7mm 12mm 5mm 12mm !important;
+        background: #ffffff !important;
+        height: 272mm !important;
+        min-height: 272mm !important;
+        max-height: 272mm !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+      .a4-page + .a4-page,
+      .cert-sheet + .cert-sheet {
+        page-break-before: always !important;
+        break-before: page !important;
+      }
+      .a4-page-content {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      .a4-page-footer-zone {
+        flex-shrink: 0 !important;
+        margin-top: auto !important;
+      }
+      .cert-frame {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        height: 258mm !important;
+        min-height: 258mm !important;
+        max-height: 258mm !important;
+        box-sizing: border-box !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        border: 5px double #0284c7 !important;
+        padding: 20px 24px !important;
+      }
+      .letter-header,
+      .letter-running-header,
+      .letter-terms-table,
+      .letter-signoff {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="cert-print-container">
+      ${printContentHtml}
+    </div>
+  </body>
+</html>`;
+}
+
+// Upload exact print form file to Firebase Storage
+async function uploadExactDocToStorage(htmlContent, fileName, nomenclature, meta = {}) {
+  try {
+    const storage = await getFirebaseStorage();
+    const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+    const storagePath = `issued_documents/${fileName}.html`;
+    const storageRef = ref(storage, storagePath);
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const snap = await uploadBytes(storageRef, blob, {
+      contentType: 'text/html;charset=utf-8',
+      customMetadata: {
+        nomenclature: nomenclature || '',
+        refId: meta.refId || '',
+        candidateName: meta.name || '',
+        template: meta.template || '',
+        savedAt: new Date().toISOString()
+      }
+    });
+    const downloadUrl = await getDownloadURL(snap.ref);
+    return {
+      storageUrl: downloadUrl,
+      storagePath: storagePath
+    };
+  } catch (err) {
+    console.warn("Firebase Storage upload note:", err);
+    return {
+      storageUrl: '',
+      storagePath: ''
+    };
+  }
+}
+
+// Print saved standalone HTML string in isolated iframe
+function printSavedHtmlContent(htmlContent, title) {
+  let printFrame = document.getElementById('cert-print-iframe');
+  if (!printFrame) {
+    printFrame = document.createElement('iframe');
+    printFrame.id = 'cert-print-iframe';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = 'none';
+    printFrame.style.opacity = '0';
+    printFrame.style.pointerEvents = 'none';
+    document.body.appendChild(printFrame);
+  }
+
+  const prevDocTitle = document.title;
+  document.title = title;
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  frameDoc.write(htmlContent);
+  frameDoc.close();
+
+  setTimeout(() => {
+    try {
+      printFrame.contentWindow.focus();
+      printFrame.contentWindow.print();
+    } catch (_) {
+      window.print();
+    } finally {
+      setTimeout(() => {
+        document.title = prevDocTitle;
+      }, 1500);
+    }
+  }, 250);
+}
+
 // Date formatter for formal letters (e.g. 1st November 2026)
 function formatCertDate(dateStr) {
   if (!dateStr) return '—';
@@ -4625,7 +4817,7 @@ async function loadIssuedDocumentsFromFirebase() {
   renderCertArchiveTable();
 }
 
-// Render the Archive of Previously Issued Documents with full rich details
+// Render the Archive of Previously Issued Documents with full rich details & storage files
 function renderCertArchiveTable() {
   const tbody = document.getElementById('cert-archive-table-body');
   const countBadge = document.getElementById('cert-archive-count');
@@ -4636,7 +4828,7 @@ function renderCertArchiveTable() {
   if (issuedDocumentsList.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 32px 16px;">
       <div style="font-size: 0.86rem; font-weight: 700; color: #475569; margin-bottom: 4px;">No documents saved to archive yet.</div>
-      <div style="font-size: 0.73rem; color: #94a3b8;">Click "🖨️ Print / Save as PDF" or "💾 Save to Archive" above to automatically persist documents in the Firebase backend.</div>
+      <div style="font-size: 0.73rem; color: #94a3b8;">Click "🖨️ Print / Save as PDF" or "💾 Save to Archive" above to automatically persist the exact print form to Cloud Storage and backend.</div>
     </td></tr>`;
     return;
   }
@@ -4663,6 +4855,13 @@ function renderCertArchiveTable() {
             ${escapeHtml(nomenclature)}
           </div>
           ${doc.email ? `<div style="font-size: 0.68rem; color: #64748b; margin-top: 1px;">📧 ${escapeHtml(doc.email)}</div>` : ''}
+          <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            ${doc.storageUrl 
+              ? `<a href="${escapeHtml(doc.storageUrl)}" target="_blank" rel="noopener noreferrer" class="badge emerald" style="font-size: 0.64rem; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View exact print form saved in Cloud Storage">☁️ Saved to Storage</a>`
+              : `<span class="badge blue" style="font-size: 0.64rem;" title="Stored in live Firebase backend">✓ Saved in Backend</span>`
+            }
+            ${doc.fileName ? `<span style="font-size: 0.62rem; color: #94a3b8; font-family: monospace;" title="Nomenclature filename">${escapeHtml(doc.fileName)}</span>` : ''}
+          </div>
         </td>
         <td>
           ${typeBadges[doc.template] || '<span class="badge gray">Document</span>'}
@@ -4678,10 +4877,12 @@ function renderCertArchiveTable() {
           ${doc.location ? `<div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">📍 ${escapeHtml(doc.location)}</div>` : ''}
         </td>
         <td style="text-align: right;">
-          <div style="display: inline-flex; gap: 6px; align-items: center;">
-            <button class="btn-table-action" onclick="loadIssuedDocToEditor('${escapeHtml(doc.id)}')" title="Load into Editor & Preview" style="font-size: 0.72rem; padding: 4px 8px;">✏️ Edit</button>
-            <button class="btn-table-action" onclick="quickPrintIssuedDoc('${escapeHtml(doc.id)}')" title="Print Document" style="font-size: 0.72rem; padding: 4px 8px;">🖨️</button>
-            <button class="btn-table-action" onclick="deleteIssuedDoc('${escapeHtml(doc.id)}')" title="Delete from Firebase Archive" style="color: #ef4444; font-size: 0.72rem; padding: 4px 8px;">🗑️</button>
+          <div style="display: inline-flex; gap: 5px; align-items: center; justify-content: flex-end; flex-wrap: wrap;">
+            <button class="btn-table-action" onclick="viewExactIssuedDoc('${escapeHtml(doc.id)}')" title="View Exact Saved Print Form" style="font-size: 0.72rem; padding: 4px 8px; color: #0284c7; border-color: #bae6fd; background: #f0f9ff;">👁️ View</button>
+            <button class="btn-table-action" onclick="quickPrintIssuedDoc('${escapeHtml(doc.id)}')" title="Print Exact Document" style="font-size: 0.72rem; padding: 4px 8px;">🖨️ Print</button>
+            <button class="btn-table-action" onclick="downloadIssuedDocFile('${escapeHtml(doc.id)}')" title="Download Stored Print File" style="font-size: 0.72rem; padding: 4px 8px;">⬇️</button>
+            <button class="btn-table-action" onclick="loadIssuedDocToEditor('${escapeHtml(doc.id)}')" title="Load into Editor" style="font-size: 0.72rem; padding: 4px 8px;">✏️</button>
+            <button class="btn-table-action" onclick="deleteIssuedDoc('${escapeHtml(doc.id)}')" title="Delete from Firebase Archive & Cloud Storage" style="color: #ef4444; font-size: 0.72rem; padding: 4px 8px;">🗑️</button>
           </div>
         </td>
       </tr>
@@ -4732,17 +4933,78 @@ window.loadIssuedDocToEditor = function(docId) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
+// View exact saved print document form
+window.viewExactIssuedDoc = function(docId) {
+  const item = issuedDocumentsList.find(d => d.id === docId);
+  if (!item) {
+    showToast('Document not found in list.', 'error');
+    return;
+  }
+  if (item.storageUrl) {
+    window.open(item.storageUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if (item.exactPrintHtml) {
+    const newWin = window.open('', '_blank');
+    if (newWin) {
+      newWin.document.open();
+      newWin.document.write(item.exactPrintHtml);
+      newWin.document.close();
+      return;
+    }
+  }
+  loadIssuedDocToEditor(docId);
+  showToast('Loaded document into editor preview', 'info');
+};
+
+// Download stored print file locally
+window.downloadIssuedDocFile = function(docId) {
+  const item = issuedDocumentsList.find(d => d.id === docId);
+  if (!item) {
+    showToast('Document not found in list.', 'error');
+    return;
+  }
+  const rawFileName = item.fileName || `${item.nomenclature || 'document'}`;
+  const fileName = rawFileName.endsWith('.html') ? rawFileName : `${rawFileName.replace(/\.pdf$/i, '')}.html`;
+  const content = item.exactPrintHtml;
+  if (content) {
+    const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+    showToast(`Downloaded ${fileName}`, 'success');
+  } else if (item.storageUrl) {
+    window.open(item.storageUrl, '_blank');
+  } else {
+    loadIssuedDocToEditor(docId);
+    showToast('Loaded document into editor preview', 'info');
+  }
+};
+
 // Quick Print an issued document directly from the archive
 window.quickPrintIssuedDoc = function(docId) {
+  const item = issuedDocumentsList.find(d => d.id === docId);
+  if (item && item.exactPrintHtml) {
+    printSavedHtmlContent(item.exactPrintHtml, item.fileName || item.nomenclature || 'Synerbit Document');
+    return;
+  }
   loadIssuedDocToEditor(docId);
   setTimeout(() => {
     handleCertPrint();
   }, 120);
 };
 
-// Permanently delete a document directly from the Firebase archive
+// Permanently delete a document directly from Firebase backend & storage
 window.deleteIssuedDoc = async function(docId) {
-  if (!confirm('Are you sure you want to permanently delete this document from Firebase backend?')) return;
+  if (!confirm('Are you sure you want to permanently delete this document from Firebase backend and storage?')) return;
+  const item = issuedDocumentsList.find(d => d.id === docId);
   try {
     // Optimistic removal from in-memory list & local cache immediately
     issuedDocumentsList = issuedDocumentsList.filter(d => d.id !== docId);
@@ -4754,7 +5016,18 @@ window.deleteIssuedDoc = async function(docId) {
     const db = await getFirestoreDb();
     const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     await deleteDoc(doc(db, "issued_documents", docId));
-    showToast('Document deleted from Firebase archive', 'info');
+
+    if (item && item.storagePath) {
+      try {
+        const storage = await getFirebaseStorage();
+        const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+        await deleteObject(ref(storage, item.storagePath));
+      } catch (stErr) {
+        console.warn("Storage delete warning:", stErr);
+      }
+    }
+
+    showToast('Document deleted from Firebase archive & storage', 'info');
     await loadIssuedDocumentsFromFirebase();
   } catch (err) {
     console.error("Failed to delete document from Firebase:", err);
@@ -4763,7 +5036,7 @@ window.deleteIssuedDoc = async function(docId) {
   }
 };
 
-// Permanently delete ALL issued documents directly from the Firebase backend
+// Permanently delete ALL issued documents directly from the Firebase backend & storage
 window.deleteAllIssuedDocsFromFirebase = async function() {
   if (!issuedDocumentsList || issuedDocumentsList.length === 0) {
     showToast('No documents to delete in Firebase archive.', 'info');
@@ -4771,7 +5044,7 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
   }
 
   const count = issuedDocumentsList.length;
-  const confirmMsg = `⚠️ Are you sure you want to permanently delete ALL ${count} issued document(s) from the Firebase backend?\n\nThis will completely purge all saved certificates and offer letters from the database. This action CANNOT be undone.`;
+  const confirmMsg = `⚠️ Are you sure you want to permanently delete ALL ${count} issued document(s) from Firebase backend and storage?\n\nThis will completely purge all saved certificates, offer letters, and files from the database and Cloud Storage. This action CANNOT be undone.`;
   if (!confirm(confirmMsg)) return;
 
   const btnDeleteAll = document.getElementById('btn-cert-delete-all');
@@ -4780,6 +5053,8 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
     btnDeleteAll.disabled = true;
     btnDeleteAll.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 4px;" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Deleting All from Firebase...`;
   }
+
+  const itemsToDelete = [...issuedDocumentsList];
 
   try {
     // Optimistic instant clear
@@ -4795,8 +5070,8 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
     
     // Batch delete in chunks of 400 (Firestore max limit is 500 ops per batch)
     const chunkSize = 400;
-    for (let i = 0; i < issuedDocumentsList.length; i += chunkSize) {
-      const chunk = issuedDocumentsList.slice(i, i + chunkSize);
+    for (let i = 0; i < itemsToDelete.length; i += chunkSize) {
+      const chunk = itemsToDelete.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach(item => {
         batch.delete(doc(db, "issued_documents", item.id));
@@ -4804,7 +5079,22 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
       await batch.commit();
     }
 
-    showToast(`Successfully deleted all ${count} documents from Firebase backend!`, 'success');
+    // Try deleting storage files in background
+    try {
+      const storage = await getFirebaseStorage();
+      const { ref, deleteObject } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+      for (const item of itemsToDelete) {
+        if (item.storagePath) {
+          try {
+            await deleteObject(ref(storage, item.storagePath));
+          } catch (_) {}
+        }
+      }
+    } catch (stErr) {
+      console.warn("Storage batch delete note:", stErr);
+    }
+
+    showToast(`Successfully deleted all ${count} documents from Firebase backend & storage!`, 'success');
   } catch (err) {
     console.error("Failed to delete all documents from Firebase:", err);
     showToast(`Error deleting documents from Firebase: ${err.message}`, 'error');
@@ -4817,7 +5107,7 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
   }
 };
 
-// Save active document directly to Firebase backend
+// Save active document directly to Firebase backend & Cloud Storage
 async function handleCertSave(silent = false) {
   const isSilent = silent === true;
   const btnSave = document.getElementById('btn-cert-save');
@@ -4874,7 +5164,14 @@ async function handleCertSave(silent = false) {
 
     const docId = activeEditingDocId || `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const nomenclature = getDocNomenclature(currentCertTemplate, name, refId, 'standard');
-    const fileName = `${getDocNomenclature(currentCertTemplate, name, refId, 'filename')}.pdf`;
+    const fileBaseName = getDocNomenclature(currentCertTemplate, name, refId, 'filename');
+    const fileName = `${fileBaseName}.html`;
+
+    // Compile exact standalone print form HTML
+    const sheet = document.getElementById('cert-preview-sheet');
+    const exactPrintHtml = sheet ? generateFullPrintDocumentHtml(sheet, nomenclature) : '';
+
+    const existingDoc = issuedDocumentsList.find(d => d.id === docId || (refId && d.refId === refId));
 
     const docRecord = {
       id: docId,
@@ -4882,6 +5179,9 @@ async function handleCertSave(silent = false) {
       template: currentCertTemplate,
       nomenclature,
       fileName,
+      storageUrl: existingDoc?.storageUrl || '',
+      storagePath: existingDoc?.storagePath || '',
+      exactPrintHtml: exactPrintHtml || (existingDoc?.exactPrintHtml || ''),
       name,
       email,
       role,
@@ -4919,7 +5219,33 @@ async function handleCertSave(silent = false) {
     renderCertArchiveTable();
     activeEditingDocId = docRecord.id;
 
-    // 2. Direct write to Firebase Firestore collection "issued_documents"
+    // 2. Upload exact print form to Firebase Storage
+    if (exactPrintHtml) {
+      try {
+        const uploadRes = await uploadExactDocToStorage(exactPrintHtml, fileBaseName, nomenclature, {
+          refId,
+          name,
+          template: currentCertTemplate
+        });
+        if (uploadRes.storageUrl) {
+          docRecord.storageUrl = uploadRes.storageUrl;
+          docRecord.storagePath = uploadRes.storagePath;
+          const idx = issuedDocumentsList.findIndex(d => d.id === docRecord.id);
+          if (idx >= 0) {
+            issuedDocumentsList[idx].storageUrl = uploadRes.storageUrl;
+            issuedDocumentsList[idx].storagePath = uploadRes.storagePath;
+            try {
+              localStorage.setItem('synerbit_issued_docs_cache', JSON.stringify(issuedDocumentsList));
+            } catch (_) {}
+            renderCertArchiveTable();
+          }
+        }
+      } catch (storageErr) {
+        console.warn("Storage upload note:", storageErr);
+      }
+    }
+
+    // 3. Direct write to Firebase Firestore collection "issued_documents"
     try {
       const db = await getFirestoreDb();
       const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
@@ -4929,7 +5255,7 @@ async function handleCertSave(silent = false) {
     }
 
     if (!isSilent) {
-      showToast(`Document ${nomenclature} successfully saved to Firebase backend!`, 'success');
+      showToast(`Document ${nomenclature} successfully saved to Firebase backend & Storage!`, 'success');
     }
 
     // Background re-fetch to confirm synchronization
@@ -4962,7 +5288,7 @@ function handleCertCopy() {
   });
 }
 
-// High-Performance Isolated Print / Save as PDF with Option 1: Auto-Save to Backend
+// High-Performance Isolated Print / Save as PDF with Auto-Save to Backend & Storage
 async function handleCertPrint() {
   const sheet = document.getElementById('cert-preview-sheet');
   if (!sheet) {
@@ -4984,7 +5310,7 @@ async function handleCertPrint() {
     btnPrint.innerHTML = `<svg style="animation: adminSpin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Saving to Backend...`;
   }
 
-  // Option 1: Auto-save document directly to Firebase backend on Print
+  // Auto-save exact print form to Firebase backend and Cloud Storage
   try {
     const saved = await handleCertSave(true);
     if (!saved) {
@@ -5026,116 +5352,7 @@ async function handleCertPrint() {
 
   const frameDoc = printFrame.contentWindow.document;
   frameDoc.open();
-
-  // Inherit all stylesheet tags and fonts from parent
-  let headStyles = '';
-  document.querySelectorAll('link[rel="stylesheet"], style').forEach(el => {
-    headStyles += el.outerHTML + '\n';
-  });
-
-  // Prepare clean HTML without preview-only divider indicators
-  const clone = sheet.cloneNode(true);
-  clone.querySelectorAll('.a4-page-break-indicator').forEach(el => el.remove());
-  const printContentHtml = clone.innerHTML;
-
-  frameDoc.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>${escapeHtml(fileName)}</title>
-        ${headStyles}
-        <style>
-          @page {
-            size: A4 portrait;
-            margin: 0;
-          }
-          * {
-            box-sizing: border-box;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          html, body {
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-          }
-          .cert-print-container {
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          .a4-page-break-indicator {
-            display: none !important;
-          }
-          .a4-page,
-          .cert-sheet {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            width: 100% !important;
-            max-width: 210mm !important;
-            box-shadow: none !important;
-            border: none !important;
-            margin: 0 auto !important;
-            padding: 7mm 12mm 5mm 12mm !important;
-            background: #ffffff !important;
-            height: 272mm !important;
-            min-height: 272mm !important;
-            max-height: 272mm !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            page-break-after: auto !important;
-            break-after: auto !important;
-          }
-          .a4-page + .a4-page,
-          .cert-sheet + .cert-sheet {
-            page-break-before: always !important;
-            break-before: page !important;
-          }
-          .a4-page-content {
-            flex: 1 1 auto !important;
-            display: flex !important;
-            flex-direction: column !important;
-          }
-          .a4-page-footer-zone {
-            flex-shrink: 0 !important;
-            margin-top: auto !important;
-          }
-          .cert-frame {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            height: 258mm !important;
-            min-height: 258mm !important;
-            max-height: 258mm !important;
-            box-sizing: border-box !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            border: 5px double #0284c7 !important;
-            padding: 20px 24px !important;
-          }
-          .letter-header,
-          .letter-running-header,
-          .letter-terms-table,
-          .letter-signoff {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="cert-print-container">
-          ${printContentHtml}
-        </div>
-      </body>
-    </html>
-  `);
+  frameDoc.write(generateFullPrintDocumentHtml(sheet, fileName));
   frameDoc.close();
 
   const resetBtn = () => {
@@ -5185,7 +5402,6 @@ async function handleCertPrint() {
         images[i].onerror = onImg;
       }
     }
-    // Fallback timer if browser already has images in cache
     setTimeout(() => {
       if (!done) {
         done = true;
