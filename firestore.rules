@@ -96,6 +96,12 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    // 8. ISSUED DOCUMENTS (OFFER LETTERS & CERTIFICATES):
+    // Allow reading, saving, and deleting issued documents
+    match /issued_documents/{docId} {
+      allow read, write: if true;
+    }
+
     // Fallback rule: deny all other collections by default for security
     match /{document=**} {
       allow read, write: if false;

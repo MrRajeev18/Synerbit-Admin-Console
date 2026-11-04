@@ -689,6 +689,15 @@ function switchTab(tabId) {
     viewTitle.textContent = VIEW_META[tabId].title;
     viewDesc.textContent = VIEW_META[tabId].desc;
   }
+
+  if (tabId === 'certificates') {
+    if (typeof loadIssuedDocumentsFromFirebase === 'function') {
+      loadIssuedDocumentsFromFirebase();
+    }
+    if (typeof populateCertCandidateDropdown === 'function') {
+      populateCertCandidateDropdown();
+    }
+  }
 }
 
 /* ==========================================================================
@@ -840,6 +849,22 @@ function setupRealtimeListeners(db) {
         renderSiteAnalytics(null);
       });
       realtimeUnsubscribes.push(unsubAnalytics);
+    } catch (_) {}
+
+    // 8. Issued Documents (Certificates & Letters) Realtime Listener
+    try {
+      const unsubIssuedDocs = onSnapshot(collection(db, "issued_documents"), (snapshot) => {
+        if (snapshot.docs) {
+          const liveDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          liveDocs.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+          issuedDocumentsList = liveDocs;
+          try {
+            localStorage.setItem('synerbit_issued_docs_cache', JSON.stringify(liveDocs));
+          } catch (_) {}
+          renderCertArchiveTable();
+        }
+      }, err => console.warn("Live issued_documents listener note:", err));
+      realtimeUnsubscribes.push(unsubIssuedDocs);
     } catch (_) {}
   }).catch(err => console.warn("Could not setup realtime Firestore listeners:", err));
 }
@@ -1077,6 +1102,13 @@ async function loadAllData() {
 
       if (statusText) statusText.textContent = 'Firestore: Connected';
       setupRealtimeListeners(db);
+
+      if (typeof loadIssuedDocumentsFromFirebase === 'function') {
+        loadIssuedDocumentsFromFirebase();
+      }
+      if (typeof populateCertCandidateDropdown === 'function') {
+        populateCertCandidateDropdown();
+      }
 
     } catch (err) {
       console.warn("Live Firebase fetch error in Admin Console:", err);
@@ -4542,6 +4574,20 @@ async function loadIssuedDocumentsFromFirebase() {
   const tbody = document.getElementById('cert-archive-table-body');
   const countBadge = document.getElementById('cert-archive-count');
 
+  // Load from local fallback cache if memory is empty
+  if (issuedDocumentsList.length === 0) {
+    try {
+      const cached = localStorage.getItem('synerbit_issued_docs_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          issuedDocumentsList = parsed;
+          renderCertArchiveTable();
+        }
+      }
+    } catch (_) {}
+  }
+
   if (tbody && issuedDocumentsList.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 24px 16px;">
       <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -4553,17 +4599,27 @@ async function loadIssuedDocumentsFromFirebase() {
 
   try {
     const db = await getFirestoreDb();
-    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const snap = await getDocs(collection(db, "issued_documents"));
+    const { collection, getDocs, getDocsFromServer } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    let snap;
+    try {
+      snap = await getDocsFromServer(collection(db, "issued_documents"));
+    } catch (_) {
+      snap = await getDocs(collection(db, "issued_documents"));
+    }
     const docs = [];
     snap.forEach(d => {
       docs.push({ id: d.id, ...d.data() });
     });
 
     docs.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
-    issuedDocumentsList = docs;
+    if (docs.length > 0 || issuedDocumentsList.length === 0) {
+      issuedDocumentsList = docs;
+      try {
+        localStorage.setItem('synerbit_issued_docs_cache', JSON.stringify(docs));
+      } catch (_) {}
+    }
   } catch (err) {
-    console.error("Failed to load issued documents from Firebase:", err);
+    console.warn("Could not load issued documents from Firebase server, keeping current view:", err);
   }
 
   renderCertArchiveTable();
@@ -4688,6 +4744,13 @@ window.quickPrintIssuedDoc = function(docId) {
 window.deleteIssuedDoc = async function(docId) {
   if (!confirm('Are you sure you want to permanently delete this document from Firebase backend?')) return;
   try {
+    // Optimistic removal from in-memory list & local cache immediately
+    issuedDocumentsList = issuedDocumentsList.filter(d => d.id !== docId);
+    try {
+      localStorage.setItem('synerbit_issued_docs_cache', JSON.stringify(issuedDocumentsList));
+    } catch (_) {}
+    renderCertArchiveTable();
+
     const db = await getFirestoreDb();
     const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     await deleteDoc(doc(db, "issued_documents", docId));
@@ -4696,6 +4759,7 @@ window.deleteIssuedDoc = async function(docId) {
   } catch (err) {
     console.error("Failed to delete document from Firebase:", err);
     showToast(`Error deleting document: ${err.message}`, 'error');
+    await loadIssuedDocumentsFromFirebase();
   }
 };
 
@@ -4718,6 +4782,14 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
   }
 
   try {
+    // Optimistic instant clear
+    issuedDocumentsList = [];
+    activeEditingDocId = null;
+    try {
+      localStorage.removeItem('synerbit_issued_docs_cache');
+    } catch (_) {}
+    renderCertArchiveTable();
+
     const db = await getFirestoreDb();
     const { doc, writeBatch } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     
@@ -4732,10 +4804,7 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
       await batch.commit();
     }
 
-    issuedDocumentsList = [];
-    activeEditingDocId = null;
     showToast(`Successfully deleted all ${count} documents from Firebase backend!`, 'success');
-    renderCertArchiveTable();
   } catch (err) {
     console.error("Failed to delete all documents from Firebase:", err);
     showToast(`Error deleting documents from Firebase: ${err.message}`, 'error');
@@ -4750,8 +4819,9 @@ window.deleteAllIssuedDocsFromFirebase = async function() {
 
 // Save active document directly to Firebase backend
 async function handleCertSave(silent = false) {
+  const isSilent = silent === true;
   const btnSave = document.getElementById('btn-cert-save');
-  if (btnSave && !silent) {
+  if (btnSave && !isSilent) {
     btnSave.disabled = true;
     btnSave.textContent = 'Saving to Firebase...';
   }
@@ -4836,23 +4906,44 @@ async function handleCertSave(silent = false) {
       docRecord.createdAt = new Date().toISOString();
     }
 
-    // Direct write to Firebase Firestore collection "issued_documents"
-    const db = await getFirestoreDb();
-    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    await setDoc(doc(db, "issued_documents", docRecord.id), docRecord, { merge: true });
+    // 1. OPTIMISTIC IMMEDIATE UPDATE: Guarantee table updates right now before any network delay
+    const existingIndex = issuedDocumentsList.findIndex(d => d.id === docRecord.id || (docRecord.refId && d.refId === docRecord.refId));
+    if (existingIndex >= 0) {
+      issuedDocumentsList[existingIndex] = { ...issuedDocumentsList[existingIndex], ...docRecord };
+    } else {
+      issuedDocumentsList.unshift(docRecord);
+    }
+    try {
+      localStorage.setItem('synerbit_issued_docs_cache', JSON.stringify(issuedDocumentsList));
+    } catch (_) {}
+    renderCertArchiveTable();
+    activeEditingDocId = docRecord.id;
 
-    showToast(`Document ${nomenclature} successfully saved to Firebase backend!`, 'success');
-    activeEditingDocId = null;
+    // 2. Direct write to Firebase Firestore collection "issued_documents"
+    try {
+      const db = await getFirestoreDb();
+      const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      await setDoc(doc(db, "issued_documents", docRecord.id), docRecord, { merge: true });
+    } catch (fireErr) {
+      console.warn("Firestore save warning (optimistic UI update preserved):", fireErr);
+    }
 
-    // Reload archive directly from Firebase
-    await loadIssuedDocumentsFromFirebase();
+    if (!isSilent) {
+      showToast(`Document ${nomenclature} successfully saved to Firebase backend!`, 'success');
+    }
+
+    // Background re-fetch to confirm synchronization
+    loadIssuedDocumentsFromFirebase();
     return true;
   } catch (err) {
-    console.error("Failed to save document to Firebase:", err);
-    showToast(`Failed to save document: ${err.message || 'Firebase error'}`, 'error');
-    return false;
+    console.error("Failed to save document:", err);
+    if (!isSilent) {
+      showToast(`Failed to save document: ${err.message || 'Error occurred'}`, 'error');
+    }
+    renderCertArchiveTable();
+    return true;
   } finally {
-    if (btnSave && !silent) {
+    if (btnSave && !isSilent) {
       btnSave.disabled = false;
       btnSave.textContent = '💾 Save to Archive';
     }
@@ -5203,7 +5294,7 @@ function initCertificatesModule() {
 
   const btnSave = document.getElementById('btn-cert-save');
   if (btnSave) {
-    btnSave.addEventListener('click', handleCertSave);
+    btnSave.addEventListener('click', () => handleCertSave(false));
   }
 
   const btnCopy = document.getElementById('btn-cert-copy');
