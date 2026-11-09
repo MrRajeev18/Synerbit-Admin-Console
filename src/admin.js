@@ -1141,6 +1141,43 @@ async function loadAllData() {
   updateAllUIPanels();
 }
 
+let currentAnalyticsData = null;
+let currentAnalyticsTimeframe = '30d';
+
+window.setAnalyticsTimeframe = function(timeframe) {
+  currentAnalyticsTimeframe = timeframe;
+  const btn24h = document.getElementById('btn-ga-timeframe-24h');
+  const btn30d = document.getElementById('btn-ga-timeframe-30d');
+
+  if (timeframe === '24h') {
+    if (btn24h) {
+      btn24h.style.background = '#ffffff';
+      btn24h.style.color = '#0284c7';
+      btn24h.style.boxShadow = '0 1px 2px rgba(0,0,0,0.06)';
+    }
+    if (btn30d) {
+      btn30d.style.background = 'transparent';
+      btn30d.style.color = '#64748b';
+      btn30d.style.boxShadow = 'none';
+    }
+  } else {
+    if (btn30d) {
+      btn30d.style.background = '#ffffff';
+      btn30d.style.color = '#0284c7';
+      btn30d.style.boxShadow = '0 1px 2px rgba(0,0,0,0.06)';
+    }
+    if (btn24h) {
+      btn24h.style.background = 'transparent';
+      btn24h.style.color = '#64748b';
+      btn24h.style.boxShadow = 'none';
+    }
+  }
+
+  if (currentAnalyticsData) {
+    renderSiteAnalytics(currentAnalyticsData);
+  }
+};
+
 function formatAnalyticsTimestamp(isoStr) {
   if (!isoStr) return 'Active Telemetry';
   try {
@@ -1160,6 +1197,8 @@ function formatAnalyticsTimestamp(isoStr) {
 }
 
 function renderSiteAnalytics(data) {
+  currentAnalyticsData = data;
+  const v24hEl = document.getElementById('ga-visitors-24h');
   const usersEl = document.getElementById('ga-active-users');
   const viewsEl = document.getElementById('ga-page-views');
   const sessionsEl = document.getElementById('ga-sessions');
@@ -1167,6 +1206,17 @@ function renderSiteAnalytics(data) {
   const syncedEl = document.getElementById('ga-last-synced');
   const sourcesEl = document.getElementById('ga-sources-list');
   const pagesEl = document.getElementById('ga-pages-list');
+
+  const labelUsers = document.getElementById('ga-label-users');
+  const hintUsers = document.getElementById('ga-hint-users');
+  const labelViews = document.getElementById('ga-label-views');
+  const hintViews = document.getElementById('ga-hint-views');
+  const labelSessions = document.getElementById('ga-label-sessions');
+  const hintSessions = document.getElementById('ga-hint-sessions');
+  const labelEng = document.getElementById('ga-label-engagement');
+  const hintEng = document.getElementById('ga-hint-engagement');
+  const sourcesWindow = document.getElementById('ga-sources-window');
+  const pagesWindow = document.getElementById('ga-pages-window');
 
   if (!usersEl) return;
 
@@ -1182,6 +1232,7 @@ function renderSiteAnalytics(data) {
       }
     } catch (_) {}
 
+    if (v24hEl) v24hEl.textContent = '—';
     usersEl.textContent = '—';
     viewsEl.textContent = '—';
     sessionsEl.textContent = '—';
@@ -1197,15 +1248,51 @@ function renderSiteAnalytics(data) {
     localStorage.setItem('synerbit_site_analytics_cache', JSON.stringify(data));
   } catch (_) {}
 
-  // Format KPIs
-  usersEl.textContent = (typeof data.activeUsers === 'number') ? data.activeUsers.toLocaleString() : (data.activeUsers || '0');
-  viewsEl.textContent = (typeof data.pageViews === 'number') ? data.pageViews.toLocaleString() : (data.pageViews || '0');
-  sessionsEl.textContent = (typeof data.sessions === 'number') ? data.sessions.toLocaleString() : (data.sessions || '0');
+  // Always populate dedicated 24-Hour Visitors card
+  const v24h = data.activeUsers24h !== undefined ? data.activeUsers24h : (data.last24Hours?.activeUsers || 0);
+  if (v24hEl) {
+    v24hEl.textContent = typeof v24h === 'number' ? v24h.toLocaleString() : (v24h || '0');
+  }
 
-  if (data.engagementRate) {
-    engRateEl.textContent = data.engagementRate;
-  } else if (data.bounceRate) {
-    const br = parseFloat(data.bounceRate);
+  // Check timeframe selection: '24h' vs '30d'
+  const is24h = currentAnalyticsTimeframe === '24h';
+  const activeData = is24h
+    ? (data.last24Hours || {
+        activeUsers: data.activeUsers24h || 0,
+        pageViews: data.pageViews24h || 0,
+        sessions: data.sessions24h || 0,
+        bounceRate: data.bounceRate24h,
+        engagementRate: data.engagementRate24h,
+        topSources: data.topSources24h || [],
+        topPages: data.topPages24h || []
+      })
+    : (data.last30Days || data);
+
+  // Update labels according to selected timeframe
+  if (labelUsers) labelUsers.textContent = is24h ? 'Active Users (24h)' : 'Active Users (30d)';
+  if (hintUsers) hintUsers.textContent = is24h ? 'Unique visitors in last 24h' : 'Unique website visitors';
+  if (labelViews) labelViews.textContent = is24h ? 'Page Views (24h)' : 'Total Page Views';
+  if (hintViews) hintViews.textContent = is24h ? 'Impressions in last 24h' : 'Landing & jobs impressions';
+  if (labelSessions) labelSessions.textContent = is24h ? 'Sessions (24h)' : 'User Sessions';
+  if (hintSessions) hintSessions.textContent = is24h ? 'Browsing sessions in last 24h' : 'Total browsing sessions';
+  if (labelEng) labelEng.textContent = is24h ? 'Engagement (24h)' : 'Engagement Rate';
+  if (hintEng) hintEng.textContent = is24h ? '24h engaged session ratio' : 'Engaged session ratio';
+  if (sourcesWindow) sourcesWindow.textContent = is24h ? 'Last 24 Hours' : 'Last 30 days';
+  if (pagesWindow) pagesWindow.textContent = is24h ? 'Last 24 Hours' : 'Last 30 days';
+
+  // Format KPIs
+  const activeUsersVal = activeData.activeUsers;
+  const pageViewsVal = activeData.pageViews;
+  const sessionsVal = activeData.sessions;
+
+  usersEl.textContent = (typeof activeUsersVal === 'number') ? activeUsersVal.toLocaleString() : (activeUsersVal || '0');
+  viewsEl.textContent = (typeof pageViewsVal === 'number') ? pageViewsVal.toLocaleString() : (pageViewsVal || '0');
+  sessionsEl.textContent = (typeof sessionsVal === 'number') ? sessionsVal.toLocaleString() : (sessionsVal || '0');
+
+  if (activeData.engagementRate) {
+    engRateEl.textContent = activeData.engagementRate;
+  } else if (activeData.bounceRate) {
+    const br = parseFloat(activeData.bounceRate);
     engRateEl.textContent = !isNaN(br) ? `${(100 - br).toFixed(1)}%` : '—';
   } else {
     engRateEl.textContent = '—';
@@ -1222,9 +1309,9 @@ function renderSiteAnalytics(data) {
 
   // Top Sources
   if (sourcesEl) {
-    const sources = Array.isArray(data.topSources) ? data.topSources : [];
+    const sources = Array.isArray(activeData.topSources) ? activeData.topSources : [];
     if (sources.length === 0) {
-      sourcesEl.innerHTML = '<div class="recent-list-empty">No source data recorded yet.</div>';
+      sourcesEl.innerHTML = `<div class="recent-list-empty">No source data recorded in ${is24h ? 'last 24 hours' : 'last 30 days'}.</div>`;
     } else {
       const maxSessions = Math.max(...sources.map(s => Number(s.sessions) || 1), 1);
       sourcesEl.innerHTML = sources.map(s => {
@@ -1247,9 +1334,9 @@ function renderSiteAnalytics(data) {
 
   // Top Pages
   if (pagesEl) {
-    const pages = Array.isArray(data.topPages) ? data.topPages : [];
+    const pages = Array.isArray(activeData.topPages) ? activeData.topPages : [];
     if (pages.length === 0) {
-      pagesEl.innerHTML = '<div class="recent-list-empty">No pageview data recorded yet.</div>';
+      pagesEl.innerHTML = `<div class="recent-list-empty">No pageview data recorded in ${is24h ? 'last 24 hours' : 'last 30 days'}.</div>`;
     } else {
       const maxViews = Math.max(...pages.map(p => Number(p.views) || 1), 1);
       pagesEl.innerHTML = pages.map(p => {

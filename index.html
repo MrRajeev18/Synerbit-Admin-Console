@@ -242,7 +242,16 @@
                   </h3>
                   <div style="font-size: 0.74rem; color: #64748b;">Telemetry from synerbit.in public landing page &amp; careers portal</div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <!-- Timeframe Filter Option (24 Hours vs 30 Days) -->
+                  <div style="display: inline-flex; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 2px;">
+                    <button id="btn-ga-timeframe-24h" type="button" onclick="setAnalyticsTimeframe('24h')" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s; background: transparent; color: #64748b;" title="View visitors and metrics within the last 24 hours">
+                      ⏱️ 24 Hours
+                    </button>
+                    <button id="btn-ga-timeframe-30d" type="button" onclick="setAnalyticsTimeframe('30d')" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s; background: #ffffff; color: #0284c7; box-shadow: 0 1px 2px rgba(0,0,0,0.06);" title="View metrics for the last 30 days">
+                      📅 30 Days
+                    </button>
+                  </div>
                   <span id="ga-last-synced" style="font-size: 0.72rem; color: #64748b; font-family: var(--font-mono); background: #f8fafc; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 6px;">Awaiting sync</span>
                   <button id="btn-sync-analytics" class="btn-primary" style="padding: 4px 12px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; cursor: pointer; background: #0284c7; border: 1px solid #0284c7; color: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);" onclick="syncGoogleAnalyticsNow()" title="Fetch and refresh the latest telemetry from Google Analytics 4">
                     <svg id="ga-sync-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -254,26 +263,37 @@
               </div>
 
               <!-- GA4 KPI Grid -->
-              <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
+              <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 20px;">
+                <div class="kpi-card" style="border-left: 3px solid #10b981;">
+                  <div class="kpi-label" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span>Visitors (24h)</span>
+                    <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; color: #059669; font-weight: 600;">
+                      <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                      Live
+                    </span>
+                  </div>
+                  <div class="kpi-value" id="ga-visitors-24h" style="color: #0f172a;">—</div>
+                  <div class="kpi-hint">Active users within 24 hours</div>
+                </div>
                 <div class="kpi-card">
-                  <div class="kpi-label">30-Day Active Users</div>
+                  <div class="kpi-label" id="ga-label-users">Active Users (30d)</div>
                   <div class="kpi-value" id="ga-active-users">—</div>
-                  <div class="kpi-hint">Unique website visitors</div>
+                  <div class="kpi-hint" id="ga-hint-users">Unique website visitors</div>
                 </div>
                 <div class="kpi-card">
-                  <div class="kpi-label">Total Page Views</div>
+                  <div class="kpi-label" id="ga-label-views">Total Page Views</div>
                   <div class="kpi-value" id="ga-page-views">—</div>
-                  <div class="kpi-hint">Landing &amp; jobs impressions</div>
+                  <div class="kpi-hint" id="ga-hint-views">Impressions on synerbit.in</div>
                 </div>
                 <div class="kpi-card">
-                  <div class="kpi-label">User Sessions</div>
+                  <div class="kpi-label" id="ga-label-sessions">User Sessions</div>
                   <div class="kpi-value" id="ga-sessions">—</div>
-                  <div class="kpi-hint">Total browsing sessions</div>
+                  <div class="kpi-hint" id="ga-hint-sessions">Total browsing sessions</div>
                 </div>
                 <div class="kpi-card">
-                  <div class="kpi-label">Engagement Rate</div>
+                  <div class="kpi-label" id="ga-label-engagement">Engagement Rate</div>
                   <div class="kpi-value" id="ga-engagement-rate">—</div>
-                  <div class="kpi-hint">Engaged session ratio</div>
+                  <div class="kpi-hint" id="ga-hint-engagement">Engaged session ratio</div>
                 </div>
               </div>
 
@@ -282,7 +302,7 @@
                 <div class="data-card">
                   <div class="data-card-header">
                     <h4 class="data-card-title">Top Traffic Sources</h4>
-                    <span style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
+                    <span id="ga-sources-window" style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
                   </div>
                   <div id="ga-sources-list">
                     <div class="recent-list-empty">Awaiting Google Analytics sync data.</div>
@@ -292,7 +312,7 @@
                 <div class="data-card">
                   <div class="data-card-header">
                     <h4 class="data-card-title">Top Visited Pages</h4>
-                    <span style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
+                    <span id="ga-pages-window" style="font-size: 0.72rem; color: #64748b;">Last 30 days</span>
                   </div>
                   <div id="ga-pages-list">
                     <div class="recent-list-empty">Awaiting Google Analytics sync data.</div>
