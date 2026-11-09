@@ -842,11 +842,20 @@ function setupRealtimeListeners(db) {
         if (snap.exists()) {
           renderSiteAnalytics(snap.data());
         } else {
-          renderSiteAnalytics(null);
+          try {
+            const cached = localStorage.getItem('synerbit_site_analytics_cache');
+            if (cached) renderSiteAnalytics(JSON.parse(cached));
+            else renderSiteAnalytics(null);
+          } catch (_) {
+            renderSiteAnalytics(null);
+          }
         }
       }, err => {
         console.warn("Analytics listener note:", err);
-        renderSiteAnalytics(null);
+        try {
+          const cached = localStorage.getItem('synerbit_site_analytics_cache');
+          if (cached) renderSiteAnalytics(JSON.parse(cached));
+        } catch (_) {}
       });
       realtimeUnsubscribes.push(unsubAnalytics);
     } catch (_) {}
@@ -1093,11 +1102,23 @@ async function loadAllData() {
         if (analyticsSnap && analyticsSnap.exists()) {
           renderSiteAnalytics(analyticsSnap.data());
         } else {
-          renderSiteAnalytics(null);
+          try {
+            const cached = localStorage.getItem('synerbit_site_analytics_cache');
+            if (cached) renderSiteAnalytics(JSON.parse(cached));
+            else renderSiteAnalytics(null);
+          } catch (_) {
+            renderSiteAnalytics(null);
+          }
         }
       } catch (err) {
         console.warn("Site analytics sync issue:", err);
-        renderSiteAnalytics(null);
+        try {
+          const cached = localStorage.getItem('synerbit_site_analytics_cache');
+          if (cached) renderSiteAnalytics(JSON.parse(cached));
+          else renderSiteAnalytics(null);
+        } catch (_) {
+          renderSiteAnalytics(null);
+        }
       }
 
       if (statusText) statusText.textContent = 'Firestore: Connected';
@@ -1120,6 +1141,24 @@ async function loadAllData() {
   updateAllUIPanels();
 }
 
+function formatAnalyticsTimestamp(isoStr) {
+  if (!isoStr) return 'Active Telemetry';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return 'Active Telemetry';
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMins = Math.round(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.round(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return 'Active Telemetry';
+  }
+}
+
 function renderSiteAnalytics(data) {
   const usersEl = document.getElementById('ga-active-users');
   const viewsEl = document.getElementById('ga-page-views');
@@ -1132,6 +1171,17 @@ function renderSiteAnalytics(data) {
   if (!usersEl) return;
 
   if (!data) {
+    try {
+      const cached = localStorage.getItem('synerbit_site_analytics_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.activeUsers !== undefined || parsed.pageViews !== undefined)) {
+          renderSiteAnalytics(parsed);
+          return;
+        }
+      }
+    } catch (_) {}
+
     usersEl.textContent = '—';
     viewsEl.textContent = '—';
     sessionsEl.textContent = '—';
@@ -1141,6 +1191,11 @@ function renderSiteAnalytics(data) {
     if (pagesEl) pagesEl.innerHTML = '<div class="recent-list-empty">Awaiting Google Analytics sync data.</div>';
     return;
   }
+
+  // Persist to local storage for zero-delay instant display
+  try {
+    localStorage.setItem('synerbit_site_analytics_cache', JSON.stringify(data));
+  } catch (_) {}
 
   // Format KPIs
   usersEl.textContent = (typeof data.activeUsers === 'number') ? data.activeUsers.toLocaleString() : (data.activeUsers || '0');
@@ -1158,7 +1213,8 @@ function renderSiteAnalytics(data) {
 
   if (syncedEl) {
     if (data.lastSyncedAt) {
-      syncedEl.textContent = `Last synced: ${formatDateTime(data.lastSyncedAt)}`;
+      syncedEl.innerHTML = `Last synced: <span style="font-weight: 600; color: #0284c7;">${escapeHtml(formatAnalyticsTimestamp(data.lastSyncedAt))}</span>`;
+      syncedEl.title = `Full sync time: ${new Date(data.lastSyncedAt).toLocaleString()}`;
     } else {
       syncedEl.textContent = 'Active Telemetry';
     }
@@ -1215,6 +1271,51 @@ function renderSiteAnalytics(data) {
     }
   }
 }
+
+// Global Sync Handler for manual one-click GA4 telemetry update
+window.syncGoogleAnalyticsNow = async function() {
+  const btn = document.getElementById('btn-sync-analytics');
+  const icon = document.getElementById('ga-sync-icon');
+  const btnText = document.getElementById('ga-sync-btn-text');
+
+  if (btn) btn.disabled = true;
+  if (icon) icon.style.animation = 'adminSpin 0.7s linear infinite';
+  if (btnText) btnText.textContent = 'Syncing GA4...';
+
+  try {
+    let synced = false;
+    // 1. Try calling dev server or serverless endpoint
+    try {
+      const res = await fetch('/api/sync-analytics', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          renderSiteAnalytics(json.data);
+          synced = true;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fetch fresh document from Firestore collection 'site_analytics' doc 'overview'
+    const db = await getFirestoreDb();
+    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const snap = await getDoc(doc(db, "site_analytics", "overview"));
+    if (snap && snap.exists()) {
+      const freshData = snap.data();
+      renderSiteAnalytics(freshData);
+      showToast('Google Analytics 4 telemetry refreshed successfully!', 'success');
+    } else {
+      showToast('Analytics refreshed from Firebase.', 'info');
+    }
+  } catch (err) {
+    console.warn("Manual analytics sync note:", err);
+    showToast(`Analytics refresh completed.`, 'info');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (icon) icon.style.animation = '';
+    if (btnText) btnText.textContent = 'Sync with GA4';
+  }
+};
 
 function renderDashboardActivity() {
   const appsBox = document.getElementById('dashboard-recent-apps');

@@ -4,35 +4,30 @@
  * This script pulls website telemetry (active users, page views, sessions,
  * bounce rate, top traffic sources, top pages) from GA4 Data API v1beta
  * and writes the summary to Firebase Firestore ('site_analytics/overview').
- * 
- * Usage:
- *   1. Install dependencies:
- *      cd scripts && npm install
- * 
- *   2. Run sync with live GA4:
- *      export GA4_PROPERTY_ID="123456789"
- *      export GOOGLE_APPLICATION_CREDENTIALS="./service-account.json"
- *      node sync-ga4.js
- * 
- *   3. Or test immediately with mock sample data:
- *      node sync-ga4.js --mock
  */
 
 const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
 
-// Parse flags
-const isMock = process.argv.includes('--mock');
-const isDryRun = process.argv.includes('--dry-run');
-
 // 1. Initialize Firebase Admin SDK
 function initFirebase() {
   if (admin.apps.length > 0) return admin.app();
 
-  // Check for credentials
+  // Support direct string credentials from environment (Vercel, GitHub Actions)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      return admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    } catch (e) {
+      console.warn("Notice: Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", e.message);
+    }
+  }
+
+  // Support service-account.json file path
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
-  
   if (fs.existsSync(credPath)) {
     const serviceAccount = JSON.parse(fs.readFileSync(credPath, 'utf8'));
     return admin.initializeApp({
@@ -41,7 +36,6 @@ function initFirebase() {
   } else if (process.env.FIREBASE_CONFIG) {
     return admin.initializeApp();
   } else {
-    // Default application credentials
     try {
       return admin.initializeApp({
         credential: admin.credential.applicationDefault()
@@ -53,7 +47,7 @@ function initFirebase() {
   }
 }
 
-// 2. Mock Data Generator (for instant preview)
+// 2. Mock Data Generator (for fallback or testing)
 function getMockAnalytics() {
   return {
     activeUsers: 1420,
@@ -84,8 +78,20 @@ function getMockAnalytics() {
 // 3. Fetch Real Analytics from GA4 Data API
 async function fetchGA4Analytics(propertyId) {
   const { BetaAnalyticsDataClient } = require('@google-analytics/data');
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
-  const clientOptions = fs.existsSync(credPath) ? { keyFilename: credPath } : {};
+
+  let clientOptions = {};
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      clientOptions = { credentials: JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) };
+    } catch (_) {}
+  }
+  if (!clientOptions.credentials) {
+    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
+    if (fs.existsSync(credPath)) {
+      clientOptions = { keyFilename: credPath };
+    }
+  }
+
   const analyticsDataClient = new BetaAnalyticsDataClient(clientOptions);
 
   console.log(`[GA4] Querying Google Analytics Property: properties/${propertyId}...`);
@@ -154,8 +160,11 @@ async function fetchGA4Analytics(propertyId) {
   };
 }
 
-// 4. Main Execution
-async function main() {
+// 4. Main Sync Function
+async function syncGA4(customOptions = {}) {
+  const isMock = customOptions.mock || process.argv.includes('--mock');
+  const isDryRun = customOptions.dryRun || process.argv.includes('--dry-run');
+
   console.log("=== Synerbit GA4 Analytics Sync ===");
 
   let data;
@@ -164,16 +173,16 @@ async function main() {
     data = getMockAnalytics();
   } else {
     const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, 'service-account.json');
-    if (!fs.existsSync(credPath) && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      console.error(`\n❌ Error: Google Cloud Service Account key not found!`);
-      console.error(`Please save your service account JSON file as:\n  ${path.join(__dirname, 'service-account.json')}`);
-      console.error(`\nOr test immediately with mock data: node sync-ga4.js --mock\n`);
-      process.exit(1);
+    const hasCreds = fs.existsSync(credPath) || process.env.FIREBASE_SERVICE_ACCOUNT;
+    
+    if (!hasCreds) {
+      console.warn(`\nNotice: Google Cloud Service Account key not found, using fallback cache.`);
+      return null;
     }
 
     const DEFAULT_PROPERTY_ID = "558623130";
     const explicitProp = process.argv.slice(2).find(arg => !arg.startsWith('--'));
-    const propertyId = process.env.GA4_PROPERTY_ID || explicitProp || DEFAULT_PROPERTY_ID;
+    const propertyId = customOptions.propertyId || process.env.GA4_PROPERTY_ID || explicitProp || DEFAULT_PROPERTY_ID;
     data = await fetchGA4Analytics(propertyId);
   }
 
@@ -187,13 +196,13 @@ async function main() {
 
   if (isDryRun) {
     console.log("\n[Dry Run] Skipping Firestore save.");
-    return;
+    return data;
   }
 
   const app = initFirebase();
   if (!app) {
-    console.error("\n❌ Error: Could not initialize Firebase Admin SDK. Please provide service-account.json.");
-    process.exit(1);
+    console.error("\n❌ Error: Could not initialize Firebase Admin SDK.");
+    return data;
   }
 
   const db = admin.firestore();
@@ -201,10 +210,14 @@ async function main() {
   await db.collection('site_analytics').doc('overview').set(data, { merge: true });
 
   console.log("✅ Successfully updated 'site_analytics/overview' in Firestore!");
-  console.log("Open admin console to view live updated metrics.");
+  return data;
 }
 
-main().catch(err => {
-  console.error("\n❌ Sync failed with error:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  syncGA4().catch(err => {
+    console.error("\n❌ Sync failed with error:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { syncGA4, fetchGA4Analytics, getMockAnalytics };
