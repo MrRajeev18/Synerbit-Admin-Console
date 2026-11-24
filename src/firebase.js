@@ -142,6 +142,48 @@ export const DEFAULT_APPLICATIONS = [];
 export const DEFAULT_IDEAS = [];
 export const DEFAULT_CONTACTS = [];
 
+export const DEFAULT_ARTICLES = [
+  {
+    id: "art-good-software-starts-with-a-better-question",
+    title: "Good software starts with a better question.",
+    slug: "good-software-starts-with-a-better-question",
+    category: "Product Thinking",
+    author: "Rajeev Ranjan",
+    authorRole: "Founder & Principal Architect",
+    readTime: "4 min read",
+    excerpt: "We are not interested in adding more noise to the digital world. We are interested in making the complicated feel clear, the disconnected feel connected, and everyday work a little easier.",
+    coverUrl: "",
+    status: "published",
+    createdAt: new Date("2026-03-01T10:00:00Z").toISOString(),
+    updatedAt: new Date().toISOString(),
+    publishedAt: new Date("2026-03-01T10:00:00Z").toISOString(),
+    content: `We are not interested in adding more noise to the digital world. We are interested in making the complicated feel clear, the disconnected feel connected, and everyday work a little easier.
+
+> The best product is not the one with the most features. It is the one that makes the right thing feel effortless.
+
+When we set out to build Synerbit, we made a deliberate commitment: build software that solves actual friction, not manufactured problems. Today's software ecosystem is littered with bloated platforms, excessive dashboards, and synthetic metrics designed to maximize screen time rather than human efficiency.
+
+## 01 — Notice The Genuine Friction
+
+Every meaningful tool starts by observing where people hesitate, stumble, or build fragile workarounds. Whether it is tracking a classroom bus route, staying accountable to small daily habits, or synchronizing a distributed product sprint — the insight comes from listening, not postulating.
+
+- Find where the friction is loudest.
+- Understand the human context behind the numbers.
+- Strip away the non-essential baggage before writing a single line of code.
+
+## 02 — Shape For Clarity, Not Complexity
+
+Features are cheap to imagine and expensive to maintain. True engineering discipline lies in constraint. If an interface requires extensive onboarding documentation just to accomplish the primary objective, the design has failed its user.
+
+### Designing Systems That Last
+
+We build digital products under an ecosystem model: independent, focused software platforms that share a common standard of craft, privacy, and speed. We believe in learning by building, staying close to users, and creating things that can grow with the people who depend on them.
+
+We are here for the long game — one thoughtful product, one real problem, one better experience at a time.`
+  }
+];
+
+
 /* ==========================================================================
    PUBLIC CLIENT API (Jobs, Ideas, Products, Contacts) - Firebase Direct
    ========================================================================== */

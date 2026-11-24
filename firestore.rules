@@ -37,6 +37,17 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // ARTICLES & DISPATCHES:
+    // Public visitors can read published articles.
+    // Only authenticated admins can create, edit, or delete articles.
+    match /articles/{articleId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    match /deleted_articles/{articleId} {
+      allow read, write: if isAuthenticated();
+    }
+
     // 3. JOB APPLICATIONS:
     // Anyone applying for a job can submit an application (create only).
     // Only authenticated admins can view, review, change status, or delete applications.

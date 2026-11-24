@@ -102,6 +102,12 @@
             <span>Job Openings</span>
           </button>
 
+          <button class="nav-tab" data-tab="articles" id="tab-btn-articles">
+            <span class="tab-icon">📰</span>
+            <span>Articles</span>
+            <span class="nav-pill-badge" id="badge-articles-count">0</span>
+          </button>
+
           <button class="nav-tab" data-tab="applications" id="tab-btn-applications">
             <span class="tab-icon">📥</span>
             <span>Applications</span>
@@ -378,6 +384,44 @@
                 </thead>
                 <tbody id="jobs-table-body">
                   <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 3.5. ARTICLES & DISPATCHES MANAGEMENT -->
+          <section id="panel-articles" class="content-panel">
+            <div class="panel-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <div class="panel-search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="search-articles-input" placeholder="Search articles by title, tag, author..." />
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <select id="filter-articles-status" class="form-select" style="padding: 8px 12px; font-size: 0.82rem; width: auto;">
+                  <option value="all">All Statuses</option>
+                  <option value="published">Published</option>
+                  <option value="draft">Drafts</option>
+                </select>
+                <button class="btn-primary-action" id="btn-open-create-article">
+                  + Write New Article
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 34%;">Article Title &amp; Slug</th>
+                    <th style="width: 16%;">Category</th>
+                    <th style="width: 14%;">Author</th>
+                    <th style="width: 12%;">Read Time</th>
+                    <th style="width: 10%;">Status</th>
+                    <th style="width: 14%; text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="articles-table-body">
+                  <!-- Dynamically populated from Firestore -->
                 </tbody>
               </table>
             </div>
@@ -1192,6 +1236,108 @@ Collaborated with product teams, conducted code reviews, and mentored junior eng
         <div id="view-contact-body" style="line-height: 1.6; color: #334155; font-size: 0.85rem;">
           <!-- Populated dynamically -->
         </div>
+      </div>
+    </div>
+
+    <!-- MODAL: CREATE / EDIT ARTICLE -->
+    <div class="modal-backdrop" id="modal-article">
+      <div class="modal-window" style="max-width: 780px; max-height: 92vh; overflow-y: auto;">
+        <button class="modal-close-btn" data-close-modal="modal-article">&times;</button>
+        <h3 class="modal-header-title" id="article-modal-title">Write New Article</h3>
+        <form id="article-form">
+          <input type="hidden" id="art-id" />
+          
+          <div class="form-group">
+            <label class="form-label">Article Title *</label>
+            <input type="text" id="art-title" class="form-input" required placeholder="e.g. Good software starts with a better question" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label">URL Slug (Auto-generated) *</label>
+              <input type="text" id="art-slug" class="form-input" required placeholder="good-software-starts-with-a-better-question" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category *</label>
+              <input type="text" id="art-category" class="form-input" required placeholder="e.g. Product Thinking" list="article-categories" />
+              <datalist id="article-categories">
+                <option value="Product Thinking" />
+                <option value="Engineering" />
+                <option value="Design" />
+                <option value="Company Update" />
+                <option value="Ecosystem" />
+              </datalist>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 140px; gap: 16px;">
+            <div class="form-group">
+              <label class="form-label">Author Name *</label>
+              <input type="text" id="art-author" class="form-input" required value="Synerbit Team" placeholder="Author name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Author Role</label>
+              <input type="text" id="art-author-role" class="form-input" value="Editorial Team" placeholder="e.g. Founder, Lead Engineer" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Read Time</label>
+              <input type="text" id="art-readtime" class="form-input" placeholder="4 min read" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Excerpt / Summary (1-2 sentences for preview cards) *</label>
+            <textarea id="art-excerpt" class="form-textarea" rows="2" required placeholder="Brief summary of the article to capture readers' attention on the homepage and listing page..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cover Image URL or File Upload</label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="url" id="art-cover-url" class="form-input" placeholder="https://... or upload image" style="flex: 1;" />
+              <label class="btn-secondary-action" style="cursor: pointer; margin: 0; white-space: nowrap; padding: 10px 14px;">
+                Upload Image
+                <input type="file" id="art-cover-file" accept="image/*" style="display: none;" />
+              </label>
+            </div>
+            <div id="art-cover-preview" style="margin-top: 8px; display: none;">
+              <img id="art-cover-preview-img" src="" alt="Cover preview" style="max-height: 120px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.1);" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label class="form-label" style="margin-bottom: 0;">Article Content (Markdown / Formatted Text) *</label>
+              <div style="display: flex; gap: 6px;" class="editor-quick-toolbar">
+                <button type="button" class="btn-tool-tag" data-insert="## ">H2</button>
+                <button type="button" class="btn-tool-tag" data-insert="### ">H3</button>
+                <button type="button" class="btn-tool-tag" data-insert="**bold text**">Bold</button>
+                <button type="button" class="btn-tool-tag" data-insert="*italic text*">Italic</button>
+                <button type="button" class="btn-tool-tag" data-insert="> blockquote">Quote</button>
+                <button type="button" class="btn-tool-tag" data-insert="- list item">List</button>
+              </div>
+            </div>
+            <textarea id="art-content" class="form-textarea" rows="12" required placeholder="Write your article here using Markdown or clean paragraphs...
+
+## Heading 2
+Your thoughts and insights...
+
+> The best product is not the one with the most features. It is the one that makes the right thing feel effortless."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <label class="form-label" style="margin-bottom: 0;">Status:</label>
+              <select id="art-status" class="form-select" style="width: auto; padding: 6px 12px;">
+                <option value="published">Published (Live)</option>
+                <option value="draft">Draft (Private)</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button type="button" class="btn-secondary-action" data-close-modal="modal-article">Cancel</button>
+              <button type="submit" class="btn-primary-action" id="btn-save-article">Save &amp; Publish</button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
 

@@ -4,7 +4,7 @@
  * and CRUD operations for Products, Jobs, Applications, and Ideas.
  */
 
-import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS } from './firebase.js';
+import { firebaseConfig, isFirebaseConfigured, DEFAULT_PRODUCTS, DEFAULT_JOBS, DEFAULT_ARTICLES } from './firebase.js';
 
 // Local storage data caching disabled — all data strictly from live Firebase backend
 const getLocal = (_key, fallback = []) => fallback;
@@ -32,6 +32,7 @@ const PERMANENT_SUPER_ADMINS = [
     permissions: {
       products: true,
       jobs: true,
+      articles: true,
       applications: true,
       ideas: true,
       contacts: true,
@@ -49,6 +50,7 @@ const PERMANENT_SUPER_ADMINS = [
     permissions: {
       products: true,
       jobs: true,
+      articles: true,
       applications: true,
       ideas: true,
       contacts: true,
@@ -92,6 +94,7 @@ function deduplicateTeam(teamList) {
 let currentUser = null;
 let currentProducts = [...DEFAULT_PRODUCTS];
 let currentJobs = [...DEFAULT_JOBS];
+let currentArticles = [...DEFAULT_ARTICLES];
 let currentApplications = [];
 let currentDeletedApplications = [];
 let currentAppView = 'active'; // 'active' | 'trash'
@@ -151,6 +154,7 @@ const VIEW_META = {
   dashboard: { title: 'Dashboard Overview', desc: 'High-level ecosystem telemetry and active queues.' },
   products: { title: 'Products Catalog', desc: 'Manage software platforms displayed on synerbit.in/products.html' },
   jobs: { title: 'Career Openings', desc: 'Post, edit, or close roles displayed on synerbit.in/jobs.html' },
+  articles: { title: 'Editorial Articles', desc: 'Publish, edit, and organize articles displayed on synerbit.in/articles.html' },
   applications: { title: 'Job Applications Inbox', desc: 'Review candidates who applied on the careers page.' },
   ideas: { title: 'SaaS Concept Pitches', desc: 'Submissions received from synerbit.in/submit-idea.html' },
   contacts: { title: 'Contact Messages', desc: 'Inquiries sent via contact buttons and forms.' },
@@ -618,6 +622,8 @@ function enforcePermissions() {
 
   if (tabProducts) tabProducts.style.display = hasPermission('products') ? 'flex' : 'none';
   if (tabJobs) tabJobs.style.display = hasPermission('jobs') ? 'flex' : 'none';
+  const tabArticles = document.getElementById('tab-btn-articles');
+  if (tabArticles) tabArticles.style.display = hasPermission('articles') ? 'flex' : 'none';
   if (tabApps) tabApps.style.display = hasPermission('applications') ? 'flex' : 'none';
   if (tabIdeas) tabIdeas.style.display = hasPermission('ideas') ? 'flex' : 'none';
   if (tabContacts) tabContacts.style.display = hasPermission('contacts') ? 'flex' : 'none';
@@ -784,6 +790,23 @@ function setupRealtimeListeners(db) {
       realtimeUnsubscribes.push(unsubJobs);
     } catch (_) {}
 
+    // 3.5 Articles Realtime Listener
+    try {
+      const unsubArticles = onSnapshot(collection(db, "articles"), (snapshot) => {
+        if (snapshot.docs) {
+          const liveArts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => !a.isDeleted);
+          liveArts.sort((a, b) => {
+            const dateA = new Date(a.publishedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.publishedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          currentArticles = liveArts;
+          renderArticlesTable();
+        }
+      }, err => console.warn("Live articles listener note:", err));
+      realtimeUnsubscribes.push(unsubArticles);
+    } catch (_) {}
+
     // 4. Products Listener
     try {
       const unsubProds = onSnapshot(collection(db, "products"), (snapshot) => {
@@ -917,6 +940,7 @@ function updateAllUIPanels() {
   renderDashboardActivity();
   renderProductsTable();
   renderJobsTable();
+  renderArticlesTable();
   renderApplicationsTable();
   renderIdeasTable();
   renderContactsTable();
@@ -930,6 +954,7 @@ async function loadAllData() {
   if (!currentProducts || currentProducts.length === 0) currentProducts = [...DEFAULT_PRODUCTS];
   if (!currentJobs || currentJobs.length === 0) currentJobs = [...DEFAULT_JOBS];
   if (!currentTeam || currentTeam.length === 0) currentTeam = [...PERMANENT_SUPER_ADMINS];
+  if (!currentArticles || currentArticles.length === 0) currentArticles = [...DEFAULT_ARTICLES];
 
   updateAllUIPanels();
 
@@ -1004,6 +1029,21 @@ async function loadAllData() {
         }
       } catch (err) {
         console.warn("Job positions sync issue:", err);
+      }
+
+      // 2.5 Fetch Articles directly from Firebase
+      try {
+        const delArts = await safeQueryDocs("deleted_articles");
+        const deletedArtIds = new Set(delArts.map(d => d.id));
+        const remoteArticles = await safeQueryDocs("articles");
+        currentArticles = remoteArticles.filter(a => !deletedArtIds.has(a.id) && !a.isDeleted);
+        currentArticles.sort((a, b) => {
+          const dateA = new Date(a.publishedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.publishedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+      } catch (err) {
+        console.warn("Articles sync issue:", err);
       }
 
       // 3. Fetch Products
@@ -1845,6 +1885,424 @@ window.deleteJob = async (id) => {
       }
     } catch (err) {
       console.warn("Could not delete job from Firestore:", err);
+    }
+  }
+};
+
+/* ==========================================================================
+   ARTICLES & DISPATCHES MANAGEMENT (CRUD)
+   ========================================================================== */
+
+function renderArticlesTable() {
+  const tbody = document.getElementById("articles-table-body");
+  const countBadge = document.getElementById("badge-articles-count");
+  if (!tbody) return;
+
+  const searchInput = document.getElementById("search-articles-input");
+  const statusFilter = document.getElementById("filter-articles-status");
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const filterVal = statusFilter ? statusFilter.value : "all";
+
+  const filtered = currentArticles.filter(art => {
+    if (filterVal !== "all" && (art.status || "draft") !== filterVal) return false;
+    if (!query) return true;
+    const title = (art.title || "").toLowerCase();
+    const slug = (art.slug || "").toLowerCase();
+    const cat = (art.category || "").toLowerCase();
+    const author = (art.author || "").toLowerCase();
+    const excerpt = (art.excerpt || "").toLowerCase();
+    return title.includes(query) || slug.includes(query) || cat.includes(query) || author.includes(query) || excerpt.includes(query);
+  });
+
+  if (countBadge) {
+    const publishedCount = currentArticles.filter(a => a.status === "published").length;
+    countBadge.textContent = publishedCount;
+  }
+
+  if (filtered.length === 0) {
+    const msg = currentArticles.length === 0
+      ? "No articles published yet. Click \"+ Write New Article\" to create your first dispatch."
+      : "No articles match your search or filter.";
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 36px 16px;">${msg}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(art => {
+    const isPub = (art.status || "draft") === "published";
+    const dateFormatted = art.publishedAt
+      ? new Date(art.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : (art.createdAt ? new Date(art.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+    const previewUrl = `/article?slug=${encodeURIComponent(art.slug || art.id)}`;
+
+    return `
+      <tr>
+        <td style="vertical-align: middle;">
+          <div style="font-weight: 700; color: #0f172a; font-size: 0.9rem; line-height: 1.35;">
+            <a href="${previewUrl}" target="_blank" style="color: #0f172a; text-decoration: none;" title="Preview Article">
+              ${escapeHtml(art.title)} <span style="font-size: 0.75rem; color: #ff6038; font-weight: normal;">↗</span>
+            </a>
+          </div>
+          <div style="font-size: 0.75rem; color: #64748b; margin-top: 3px; font-family: monospace;">
+            /${escapeHtml(art.slug || art.id)}
+          </div>
+          ${art.excerpt ? `<div style="font-size: 0.74rem; color: #475569; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(art.excerpt)}</div>` : ""}
+        </td>
+        <td style="vertical-align: middle;">
+          <span style="display: inline-block; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.05em;">
+            ${escapeHtml(art.category || "General")}
+          </span>
+        </td>
+        <td style="vertical-align: middle;">
+          <div style="font-size: 0.84rem; color: #0f172a; font-weight: 600;">${escapeHtml(art.author || "Synerbit Team")}</div>
+          <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(art.authorRole || "")}</div>
+        </td>
+        <td style="vertical-align: middle;">
+          <div style="font-size: 0.8rem; color: #334155;">${escapeHtml(art.readTime || "3 min read")}</div>
+          ${dateFormatted ? `<div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">${dateFormatted}</div>` : ""}
+        </td>
+        <td style="vertical-align: middle; white-space: nowrap;">
+          <span class="product-status-badge ${isPub ? "emerald" : "amber"}" style="cursor: pointer;" onclick="window.toggleArticleStatus('${art.id}')" title="Click to toggle status">
+            <span class="status-indicator-dot"></span>
+            <span>${isPub ? "Published" : "Draft"}</span>
+          </span>
+        </td>
+        <td style="vertical-align: middle; white-space: nowrap; text-align: right;">
+          <div style="display: inline-flex; gap: 8px; align-items: center; justify-content: flex-end;">
+            <button class="btn-table-action" onclick="window.editArticle('${art.id}')">Edit</button>
+            <button class="btn-table-action delete" onclick="window.deleteArticle('${art.id}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// Articles Search and Filter listeners
+const searchArticlesInput = document.getElementById("search-articles-input");
+if (searchArticlesInput) {
+  searchArticlesInput.addEventListener("input", renderArticlesTable);
+}
+
+const filterArticlesStatus = document.getElementById("filter-articles-status");
+if (filterArticlesStatus) {
+  filterArticlesStatus.addEventListener("change", renderArticlesTable);
+}
+
+// Open Article Modal
+const btnOpenCreateArticle = document.getElementById("btn-open-create-article");
+if (btnOpenCreateArticle) {
+  btnOpenCreateArticle.addEventListener("click", () => {
+    const form = document.getElementById("article-form");
+    if (form) form.reset();
+    document.getElementById("art-id").value = "";
+    document.getElementById("art-author").value = "Synerbit Team";
+    document.getElementById("art-author-role").value = "Editorial Team";
+    document.getElementById("art-status").value = "published";
+    document.getElementById("art-readtime").value = "4 min read";
+    const previewBox = document.getElementById("art-cover-preview");
+    if (previewBox) previewBox.style.display = "none";
+    document.getElementById("article-modal-title").textContent = "Write New Article";
+    openModal("modal-article");
+  });
+}
+
+// Auto-generate slug from title
+const artTitleInput = document.getElementById("art-title");
+const artSlugInput = document.getElementById("art-slug");
+if (artTitleInput && artSlugInput) {
+  artTitleInput.addEventListener("input", () => {
+    const currentId = document.getElementById("art-id").value;
+    if (!currentId || artSlugInput.dataset.manual !== "true") {
+      const slugVal = artTitleInput.value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      artSlugInput.value = slugVal;
+    }
+  });
+  artSlugInput.addEventListener("input", () => {
+    artSlugInput.dataset.manual = "true";
+  });
+}
+
+// Auto-calculate read time from content
+const artContentInput = document.getElementById("art-content");
+const artReadtimeInput = document.getElementById("art-readtime");
+if (artContentInput && artReadtimeInput) {
+  artContentInput.addEventListener("input", () => {
+    const words = artContentInput.value.trim().split(/\s+/).filter(Boolean).length;
+    const minutes = Math.max(1, Math.ceil(words / 200));
+    artReadtimeInput.value = `${minutes} min read`;
+  });
+}
+
+// Quick markdown formatting toolbar buttons
+document.querySelectorAll(".editor-quick-toolbar button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const insertText = btn.dataset.insert;
+    const textarea = document.getElementById("art-content");
+    if (!textarea || !insertText) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const val = textarea.value;
+
+    if (start !== end) {
+      const selected = val.substring(start, end);
+      let replacement = insertText;
+      if (insertText.startsWith("**") && insertText.endsWith("**")) {
+        replacement = `**${selected}**`;
+      } else if (insertText.startsWith("*") && insertText.endsWith("*")) {
+        replacement = `*${selected}*`;
+      } else if (insertText.startsWith(">")) {
+        replacement = `> ${selected}`;
+      } else if (insertText.startsWith("-")) {
+        replacement = `- ${selected}`;
+      } else if (insertText.startsWith("## ")) {
+        replacement = `## ${selected}`;
+      } else if (insertText.startsWith("### ")) {
+        replacement = `### ${selected}`;
+      }
+      textarea.value = val.substring(0, start) + replacement + val.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start, start + replacement.length);
+    } else {
+      textarea.value = val.substring(0, start) + insertText + val.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start + insertText.length, start + insertText.length);
+    }
+  });
+});
+
+// Cover image upload listener
+const artCoverFileInput = document.getElementById("art-cover-file");
+const artCoverUrlInput = document.getElementById("art-cover-url");
+const artCoverPreview = document.getElementById("art-cover-preview");
+const artCoverPreviewImg = document.getElementById("art-cover-preview-img");
+
+if (artCoverFileInput) {
+  artCoverFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (rev) => {
+      if (artCoverPreviewImg) artCoverPreviewImg.src = rev.target.result;
+      if (artCoverPreview) artCoverPreview.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+
+    if (isFirebaseConfigured()) {
+      showToast("Uploading cover image to storage...", "info");
+      try {
+        const storage = await getFirebaseStorage();
+        const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `article_covers/${Date.now()}_${cleanName}`;
+        const storageRef = ref(storage, storagePath);
+        const snap = await uploadBytes(storageRef, file, { contentType: file.type });
+        const downloadUrl = await getDownloadURL(snap.ref);
+        if (artCoverUrlInput) {
+          artCoverUrlInput.value = downloadUrl;
+        }
+        showToast("Cover image uploaded successfully!", "success");
+      } catch (err) {
+        console.warn("Cover image upload failed:", err);
+        showToast("Failed to upload cover image to cloud storage: " + err.message, "error");
+      }
+    }
+  });
+}
+
+if (artCoverUrlInput) {
+  artCoverUrlInput.addEventListener("input", () => {
+    const url = artCoverUrlInput.value.trim();
+    if (url && artCoverPreview && artCoverPreviewImg) {
+      artCoverPreviewImg.src = url;
+      artCoverPreview.style.display = "block";
+    } else if (artCoverPreview) {
+      artCoverPreview.style.display = "none";
+    }
+  });
+}
+
+// Article Form Submit Handler
+const articleForm = document.getElementById("article-form");
+if (articleForm) {
+  articleForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const idInput = document.getElementById("art-id").value.trim();
+    const title = document.getElementById("art-title").value.trim();
+    let slug = document.getElementById("art-slug").value.trim();
+    const category = document.getElementById("art-category").value.trim() || "Product Thinking";
+    const author = document.getElementById("art-author").value.trim() || "Synerbit Team";
+    const authorRole = document.getElementById("art-author-role").value.trim() || "Editorial Team";
+    const readTime = document.getElementById("art-readtime").value.trim() || "4 min read";
+    const excerpt = document.getElementById("art-excerpt").value.trim();
+    const coverUrl = document.getElementById("art-cover-url").value.trim();
+    const contentText = document.getElementById("art-content").value.trim();
+    const status = document.getElementById("art-status").value || "published";
+
+    if (!title || !contentText || !excerpt) {
+      showToast("Please provide article title, excerpt, and content.", "error");
+      return;
+    }
+
+    if (!slug) {
+      slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    }
+
+    const btnSave = document.getElementById("btn-save-article");
+    const origText = btnSave ? btnSave.textContent : "Save";
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.textContent = "Saving...";
+    }
+
+    const docId = idInput || `art_${Date.now()}`;
+    const existing = currentArticles.find(a => a.id === docId);
+
+    const articleData = {
+      id: docId,
+      title,
+      slug,
+      category,
+      author,
+      authorRole,
+      readTime,
+      excerpt,
+      coverUrl: coverUrl || "",
+      content: contentText,
+      status,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: status === "published" ? (existing?.publishedAt || new Date().toISOString()) : null
+    };
+
+    try {
+      if (isFirebaseConfigured()) {
+        const { getFirestore, doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        await setDoc(doc(db, "articles", docId), articleData, { merge: true });
+      }
+
+      const existingIdx = currentArticles.findIndex(a => a.id === docId);
+      if (existingIdx >= 0) {
+        currentArticles[existingIdx] = articleData;
+      } else {
+        currentArticles.unshift(articleData);
+      }
+
+      renderArticlesTable();
+      closeModal("modal-article");
+      showToast(`Article "${title}" ${idInput ? "updated" : "published"} successfully!`, "success");
+    } catch (err) {
+      console.error("Save article error:", err);
+      showToast("Failed to save article: " + err.message, "error");
+    } finally {
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.textContent = origText;
+      }
+    }
+  });
+}
+
+// Edit Article
+window.editArticle = (id) => {
+  const art = currentArticles.find(a => a.id === id);
+  if (!art) return;
+
+  document.getElementById("art-id").value = art.id;
+  document.getElementById("art-title").value = art.title || "";
+  document.getElementById("art-slug").value = art.slug || "";
+  document.getElementById("art-slug").dataset.manual = "true";
+  document.getElementById("art-category").value = art.category || "Product Thinking";
+  document.getElementById("art-author").value = art.author || "Synerbit Team";
+  document.getElementById("art-author-role").value = art.authorRole || "";
+  document.getElementById("art-readtime").value = art.readTime || "4 min read";
+  document.getElementById("art-excerpt").value = art.excerpt || "";
+  document.getElementById("art-cover-url").value = art.coverUrl || "";
+  document.getElementById("art-content").value = art.content || "";
+  document.getElementById("art-status").value = art.status || "published";
+
+  const previewBox = document.getElementById("art-cover-preview");
+  const previewImg = document.getElementById("art-cover-preview-img");
+  if (art.coverUrl && previewBox && previewImg) {
+    previewImg.src = art.coverUrl;
+    previewBox.style.display = "block";
+  } else if (previewBox) {
+    previewBox.style.display = "none";
+  }
+
+  document.getElementById("article-modal-title").textContent = "Edit Article";
+  openModal("modal-article");
+};
+
+// Toggle Article Status
+window.toggleArticleStatus = async (id) => {
+  const art = currentArticles.find(a => a.id === id);
+  if (!art) return;
+
+  const newStatus = art.status === "published" ? "draft" : "published";
+  const updatedData = {
+    ...art,
+    status: newStatus,
+    updatedAt: new Date().toISOString(),
+    publishedAt: newStatus === "published" ? (art.publishedAt || new Date().toISOString()) : art.publishedAt
+  };
+
+  try {
+    if (isFirebaseConfigured()) {
+      const { getFirestore, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      await updateDoc(doc(db, "articles", id), {
+        status: newStatus,
+        updatedAt: updatedData.updatedAt,
+        publishedAt: updatedData.publishedAt
+      });
+    }
+
+    const idx = currentArticles.findIndex(a => a.id === id);
+    if (idx >= 0) currentArticles[idx] = updatedData;
+    renderArticlesTable();
+    showToast(`Article status updated to ${newStatus}`, "info");
+  } catch (err) {
+    console.error("Toggle article status error:", err);
+    showToast("Failed to update status: " + err.message, "error");
+  }
+};
+
+// Delete Article
+window.deleteArticle = async (id) => {
+  const art = currentArticles.find(a => a.id === id);
+  if (!confirm(`Are you sure you want to delete the article "${art ? art.title : id}"?`)) return;
+
+  currentArticles = currentArticles.filter(a => a.id !== id);
+  renderArticlesTable();
+
+  if (isFirebaseConfigured()) {
+    try {
+      const { getFirestore, doc, deleteDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const { initializeApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      await deleteDoc(doc(db, "articles", id));
+      await setDoc(doc(db, "deleted_articles", id), {
+        id,
+        title: art?.title || "",
+        slug: art?.slug || "",
+        deletedAt: new Date().toISOString()
+      });
+      showToast("Article deleted successfully", "info");
+    } catch (err) {
+      console.warn("Could not delete article from Firestore:", err);
+      showToast("Error deleting article: " + err.message, "error");
     }
   }
 };
