@@ -3832,13 +3832,14 @@ function renderTeamTable() {
       const activePerms = [];
       if (p.products) activePerms.push('Products');
       if (p.jobs) activePerms.push('Jobs');
+      if (p.articles) activePerms.push('Articles');
       if (p.applications) activePerms.push('Applications');
       if (p.ideas) activePerms.push('Ideas');
       if (p.contacts) activePerms.push('Contacts');
       if (p.certificates) activePerms.push('Certificates');
       if (p.team) activePerms.push('Team & Roles');
 
-      if (activePerms.length === 7) {
+      if (activePerms.length === 8) {
         permsContent = `
           <div class="perm-chips-wrap">
             <span class="perm-chip-all" title="Full unrestricted access to all console modules">
@@ -3941,6 +3942,9 @@ document.getElementById('btn-open-add-member').addEventListener('click', () => {
   if (pwdHint) {
     pwdHint.textContent = 'Member will use this email & password to sign in to the Console.';
   }
+  if (document.getElementById('perm-articles')) {
+    document.getElementById('perm-articles').checked = false;
+  }
   if (document.getElementById('perm-certificates')) {
     document.getElementById('perm-certificates').checked = false;
   }
@@ -3988,6 +3992,7 @@ document.getElementById('team-form').addEventListener('submit', async (e) => {
     permissions: {
       products: document.getElementById('perm-products').checked,
       jobs: document.getElementById('perm-jobs').checked,
+      articles: document.getElementById('perm-articles') ? document.getElementById('perm-articles').checked : false,
       applications: document.getElementById('perm-applications').checked,
       ideas: document.getElementById('perm-ideas').checked,
       contacts: document.getElementById('perm-contacts').checked,
@@ -4086,6 +4091,9 @@ window.editMember = (id) => {
   const p = m.permissions || {};
   document.getElementById('perm-products').checked = !!p.products;
   document.getElementById('perm-jobs').checked = !!p.jobs;
+  if (document.getElementById('perm-articles')) {
+    document.getElementById('perm-articles').checked = !!(p.articles || m.isSuperAdmin);
+  }
   document.getElementById('perm-applications').checked = !!p.applications;
   document.getElementById('perm-ideas').checked = !!p.ideas;
   document.getElementById('perm-contacts').checked = !!p.contacts;
