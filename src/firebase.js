@@ -67,7 +67,7 @@ export const DEFAULT_PRODUCTS = [
   },
   {
     id: "prod-busly",
-    name: "Busly",
+    name: "Busview",
     tagline: "Smart Transit & Fleet Fleet Operations Network",
     description: "Next-gen intelligent transit scheduling, telematics, and passenger tracking infrastructure for corporate fleets and urban transit.",
     category: "Logistics & Mobility",
